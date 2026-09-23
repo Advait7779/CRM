@@ -1,5 +1,6 @@
 /* eslint-disable react/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react'
+import { BASE } from '../utils/api'
 
 const AuthContext = createContext(null)
 
@@ -31,7 +32,7 @@ export function AuthProvider({ children }) {
     }
 
     const headers = { Authorization: `Bearer ${token}` }
-    fetch('/api/auth/profile', { headers, credentials: 'include' })
+    fetch(`${BASE}/auth/profile`, { headers, credentials: 'include' })
       .then(async response => {
         if (response.ok) {
           setUser(await response.json())
@@ -45,7 +46,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = async (email, password) => {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch(`${BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -65,7 +66,7 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     const token = localStorage.getItem('token')
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
-    await fetch('/api/auth/logout', { method: 'POST', headers, credentials: 'include' }).catch(() => {})
+    await fetch(`${BASE}/auth/logout`, { method: 'POST', headers, credentials: 'include' }).catch(() => {})
     localStorage.removeItem('token')
     setUser(null)
   }

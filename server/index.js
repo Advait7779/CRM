@@ -7,6 +7,7 @@ const { ipKeyGenerator } = require('express-rate-limit');
 const { authMiddleware } = require('./middleware/auth');
 const morgan = require('morgan');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 require('./config/env');
 
@@ -92,21 +93,28 @@ app.get('/health', (req, res) => res.redirect(307, '/health/live'));
 
 if (isProduction) {
   const clientBuild = path.join(__dirname, '..', 'client', 'dist');
-  app.use(express.static(clientBuild, {
-    index: false,
-    maxAge: '1y',
-    immutable: true,
-    etag: true,
-    setHeaders: (res, filePath) => {
-      if (!filePath.includes(`${path.sep}assets${path.sep}`)) {
-        res.setHeader('Cache-Control', 'no-cache');
+  const hasClient = fs.existsSync(path.join(clientBuild, 'index.html'));
+  if (hasClient) {
+    app.use(express.static(clientBuild, {
+      index: false,
+      maxAge: '1y',
+      immutable: true,
+      etag: true,
+      setHeaders: (res, filePath) => {
+        if (!filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
       }
-    }
-  }));
-  app.get('/{*splat}', (req, res) => {
-    res.setHeader('Cache-Control', 'no-cache');
-    res.sendFile(path.join(clientBuild, 'index.html'));
-  });
+    }));
+    app.get('/{*splat}', (req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(clientBuild, 'index.html'));
+    });
+  } else {
+    app.get('/', (req, res) => {
+      res.json({ status: 'ok', service: 'CRM API Server', health: '/health/live' });
+    });
+  }
 }
 
 app.use((err, req, res, next) => {

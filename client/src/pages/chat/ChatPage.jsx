@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { chatDayKey, chatDayLabel, chatTime, chatTimestamp, chatPreviewDate, sortChatMessages, mergeChatPage } from '../../utils/chatDate'
 import { useAuth } from '../../context/AuthContext'
-import { apiGet, apiPost, apiDelete, apiUpload, apiDownload } from '../../utils/api'
+import { apiGet, apiPost, apiDelete, apiUpload, apiDownload, BASE } from '../../utils/api'
 import toast from 'react-hot-toast'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 import {
@@ -1106,7 +1106,7 @@ export default function ChatPage() {
                                   onClick={() => setPreviewImage({
                                     src: (msg.attachment.startsWith('blob:') || msg.attachment.startsWith('http') || msg.attachment.startsWith('data:'))
                                       ? msg.attachment
-                                      : `/api/chat/media/${encodeURIComponent(msg.attachment)}`,
+                                      : `${BASE}/chat/media/${encodeURIComponent(msg.attachment)}`,
                                     name: msg.attachmentName || msg.attachment
                                   })}
                                   title="Click to view full photo"
@@ -1115,7 +1115,7 @@ export default function ChatPage() {
                                     src={
                                       (msg.attachment.startsWith('blob:') || msg.attachment.startsWith('http') || msg.attachment.startsWith('data:'))
                                         ? msg.attachment
-                                        : `/api/chat/media/${encodeURIComponent(msg.attachment)}`
+                                        : `${BASE}/chat/media/${encodeURIComponent(msg.attachment)}`
                                     }
                                     alt={msg.attachmentName || 'Photo'}
                                     style={{

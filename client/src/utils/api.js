@@ -1,5 +1,8 @@
 // Utility for authenticated API calls
-const BASE = '/api'
+const envBase = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
+  ? String(import.meta.env.VITE_API_URL).trim().replace(/\/+$/, '')
+  : '';
+export const BASE = envBase ? (envBase.endsWith('/api') ? envBase : `${envBase}/api`) : '/api';
 
 function authHeaders() {
   const token = localStorage.getItem('token')
