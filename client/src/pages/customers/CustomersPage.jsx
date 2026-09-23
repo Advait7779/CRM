@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
-import { apiGetAll, apiPost, apiDelete } from '../../utils/api'
-import { Plus, Search, X, Check, Eye, Trash2 } from 'lucide-react'
+import ThemeSelect from '../../components/ThemeSelect'
+import { apiGetAll, apiPost, apiPut } from '../../utils/api'
+import { Plus, Search, X, Check, Eye, Pencil } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
-const SERVICES = ['GPS', 'CCTV', 'Website', 'SMS', 'RCS', 'Voice']
+const SERVICES = ['GPS', 'CCTV', 'Website', 'SMS', 'RCS', 'Voice', 'Waba']
 
 const getServicesArray = (srv) => {
   if (Array.isArray(srv)) return srv
@@ -33,7 +33,7 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [serviceFilter, setServiceFilter] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
-  const [confirmDeleteCustomer, setConfirmDeleteCustomer] = useState(null)
+  const [editingCustomer, setEditingCustomer] = useState(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
 
   useEffect(() => {
@@ -43,20 +43,59 @@ export default function CustomersPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const handleCreate = async (e) => {
+  const handleOpenCreate = () => {
+    setEditingCustomer(null)
+    setForm({ ...EMPTY_FORM })
+    setModalOpen(true)
+  }
+
+  const handleOpenEdit = (customer) => {
+    setEditingCustomer(customer)
+    setForm({
+      name: customer.name || '',
+      contact: customer.contact || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      gst: customer.gst || '',
+      address: customer.address || '',
+      services: getServicesArray(customer.services),
+      vehicles: customer.vehicles || 0,
+      cctv: customer.cctv || 0,
+      domain: customer.domain || '',
+      hosting: customer.hosting || '',
+      websiteUrl: customer.websiteUrl || '',
+      renewalDate: customer.renewalDate ? String(customer.renewalDate).slice(0, 10) : '',
+      status: customer.status || 'Active'
+    })
+    setModalOpen(true)
+  }
+
+  const handleSave = async (e) => {
     e.preventDefault()
     if (!form.name || !form.phone) return toast.error('Name and phone are required')
     try {
+      const hasGPS = form.services.includes('GPS')
+      const hasCCTV = form.services.includes('CCTV')
+      const hasWebsite = form.services.includes('Website')
       const payload = {
         ...form,
         services: JSON.stringify(form.services),
-        vehicles: Number(form.vehicles) || 0,
-        cctv: Number(form.cctv) || 0
+        vehicles: hasGPS ? (Number(form.vehicles) || 0) : 0,
+        cctv: hasCCTV ? (Number(form.cctv) || 0) : 0,
+        domain: hasWebsite ? (form.domain || '') : '',
+        hosting: hasWebsite ? (form.hosting || '') : ''
       }
-      const created = await apiPost('/customers', payload)
-      setCustomers(prev => [...prev, created])
-      toast.success('Customer profile created successfully!')
+      if (editingCustomer) {
+        const updated = await apiPut(`/customers/${editingCustomer.id}`, payload)
+        setCustomers(prev => prev.map(c => c.id === editingCustomer.id ? { ...c, ...updated } : c))
+        toast.success('Customer details updated successfully!')
+      } else {
+        const created = await apiPost('/customers', payload)
+        setCustomers(prev => [...prev, created])
+        toast.success('Customer profile created successfully!')
+      }
       setModalOpen(false)
+      setEditingCustomer(null)
       setForm({ ...EMPTY_FORM })
     } catch (err) {
       toast.error(err.message)
@@ -88,7 +127,7 @@ export default function CustomersPage() {
           <h1 className="page-title">Customer Management</h1>
           <p className="page-subtitle">Manage client profiles, GST details, service counts and renewal details.</p>
         </div>
-        <button className="btn-primary" onClick={() => setModalOpen(true)} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+        <button className="btn-primary" onClick={handleOpenCreate} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
           <Plus size={16} /> New Customer
         </button>
       </div>
@@ -204,15 +243,15 @@ export default function CustomersPage() {
                       <Eye size={15} style={{ color: '#6366f1' }} />
                     </button>
                     <button
-                      title="Delete Customer"
+                      onClick={() => handleOpenEdit(c)}
+                      title="Edit Customer"
                       style={{
                         width: 32, height: 32, borderRadius: 8,
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer'
+                        background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', cursor: 'pointer'
                       }}
-                      onClick={() => setConfirmDeleteCustomer(c)}
                     >
-                      <Trash2 size={15} style={{ color: '#ef4444' }} />
+                      <Pencil size={15} style={{ color: '#f59e0b' }} />
                     </button>
                   </div>
                 </td>
@@ -227,12 +266,14 @@ export default function CustomersPage() {
         <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Create Customer Profile</h2>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>
+                {editingCustomer ? 'Edit Customer Details' : 'Create Customer Profile'}
+              </h2>
               <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer' }}>
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleCreate}>
+            <form onSubmit={handleSave}>
               <div className="form-grid-2" style={{ marginBottom: 14 }}>
                 <div className="form-group">
                   <label className="form-label">Company Name *</label>
@@ -283,61 +324,92 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              <div className="form-grid-3" style={{ marginBottom: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">Vehicle Count (GPS)</label>
-                  <input className="input-field" type="number" value={form.vehicles} onChange={e => setForm(f => ({ ...f, vehicles: e.target.value }))} />
+              {/* Conditional Service Fields */}
+              {(form.services.includes('GPS') || form.services.includes('CCTV')) && (
+                <div className="form-grid-2" style={{ marginBottom: 16 }}>
+                  {form.services.includes('GPS') && (
+                    <div className="form-group">
+                      <label className="form-label">Vehicle Count (GPS)</label>
+                      <input
+                        className="input-field"
+                        type="number"
+                        min="0"
+                        value={form.vehicles}
+                        onChange={e => setForm(f => ({ ...f, vehicles: e.target.value }))}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+                  {form.services.includes('CCTV') && (
+                    <div className="form-group">
+                      <label className="form-label">Camera Count (CCTV)</label>
+                      <input
+                        className="input-field"
+                        type="number"
+                        min="0"
+                        value={form.cctv}
+                        onChange={e => setForm(f => ({ ...f, cctv: e.target.value }))}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Camera Count (CCTV)</label>
-                  <input className="input-field" type="number" value={form.cctv} onChange={e => setForm(f => ({ ...f, cctv: e.target.value }))} />
+              )}
+
+              {form.services.includes('Website') && (
+                <div className="form-grid-2" style={{ marginBottom: 16 }}>
+                  <div className="form-group">
+                    <label className="form-label">Domain Name</label>
+                    <input
+                      className="input-field"
+                      value={form.domain}
+                      onChange={e => setForm(f => ({ ...f, domain: e.target.value }))}
+                      placeholder="clientdomain.com"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Hosting Details</label>
+                    <input
+                      className="input-field"
+                      value={form.hosting}
+                      onChange={e => setForm(f => ({ ...f, hosting: e.target.value }))}
+                      placeholder="e.g. AWS, Hostinger"
+                    />
+                  </div>
                 </div>
+              )}
+
+              {/* Renewal Date & Account Status */}
+              <div className="form-grid-2" style={{ marginBottom: 20 }}>
                 <div className="form-group">
                   <label className="form-label">Renewal Date</label>
                   <ThemeDatePicker value={form.renewalDate} onChange={e => setForm(f => ({ ...f, renewalDate: e.target.value }))} />
                 </div>
-              </div>
-
-              <div className="form-grid-2" style={{ marginBottom: 20 }}>
                 <div className="form-group">
-                  <label className="form-label">Domain Name</label>
-                  <input className="input-field" value={form.domain} onChange={e => setForm(f => ({ ...f, domain: e.target.value }))} placeholder="clientdomain.com" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Hosting Details</label>
-                  <input className="input-field" value={form.hosting} onChange={e => setForm(f => ({ ...f, hosting: e.target.value }))} placeholder="e.g. AWS, Hostinger" />
+                  <label className="form-label">Account Status</label>
+                  <ThemeSelect
+                    value={form.status}
+                    onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Pending Renewal">Pending Renewal</option>
+                    <option value="Overdue">Overdue</option>
+                    <option value="Inactive">Inactive</option>
+                  </ThemeSelect>
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">Create Profile</button>
+                <button type="submit" className="btn-primary">
+                  {editingCustomer ? 'Save Changes' : 'Create Profile'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      <ConfirmDeleteModal
-        isOpen={Boolean(confirmDeleteCustomer)}
-        onClose={() => setConfirmDeleteCustomer(null)}
-        title="Delete Customer"
-        subtitle={confirmDeleteCustomer ? `ID: ${confirmDeleteCustomer.id}` : ''}
-        message={
-          confirmDeleteCustomer ? (
-            <>Are you sure you want to delete customer <strong style={{ color: 'var(--text-primary)' }}>{confirmDeleteCustomer.name}</strong>? This will remove the customer profile from the system.</>
-          ) : null
-        }
-        confirmText="Delete Customer"
-        onConfirm={async () => {
-          try {
-            await apiDelete(`/customers/${confirmDeleteCustomer.id}`)
-            setCustomers(current => current.filter(item => item.id !== confirmDeleteCustomer.id))
-            toast.success(`Customer ${confirmDeleteCustomer.name} deleted`)
-            setConfirmDeleteCustomer(null)
-          } catch (error) { toast.error(error.message) }
-        }}
-      />
     </div>
   )
 }

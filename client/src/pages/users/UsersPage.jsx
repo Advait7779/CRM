@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, Key, Eye, EyeOff, Trash2, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { Plus, X, Key, Eye, EyeOff, Trash2, ShieldCheck, ShieldAlert, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ThemeSelect from '../../components/ThemeSelect'
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
@@ -16,6 +16,8 @@ const emptyForm = { name: '', email: '', phone: '', role: 'support_executive', p
 export default function UsersPage() {
   const [users, setUsers] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
+  const [editModalUser, setEditModalUser] = useState(null)
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', role: 'support_executive' })
   const [resetModalUser, setResetModalUser] = useState(null)
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [resetPasswordInput, setResetPasswordInput] = useState('')
@@ -87,6 +89,29 @@ export default function UsersPage() {
     }
   }
 
+  const openEditModal = user => {
+    setEditModalUser(user)
+    setEditForm({
+      name: user.name || '',
+      email: user.email || '',
+      phone: user.phone || '',
+      role: user.role || 'support_executive'
+    })
+  }
+
+  const handleSaveEdit = async event => {
+    event.preventDefault()
+    if (!editModalUser) return
+    try {
+      const updated = await apiPut(`/users/${editModalUser.id}`, editForm)
+      setUsers(current => current.map(item => item.id === editModalUser.id ? { ...item, ...updated } : item))
+      toast.success('User details updated successfully')
+      setEditModalUser(null)
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
+
   return (
     <div className="animate-fade-in">
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap' }}>
@@ -118,6 +143,17 @@ export default function UsersPage() {
                   <td>{new Date(user.createdAt).toLocaleDateString('en-IN')}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <button
+                        title="Edit User Details"
+                        style={{
+                          width: 32, height: 32, borderRadius: 8,
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', cursor: 'pointer'
+                        }}
+                        onClick={() => openEditModal(user)}
+                      >
+                        <Pencil size={15} style={{ color: '#f59e0b' }} />
+                      </button>
                       {!isSuperAdmin && (
                         <button
                           title="Reset User Password"
@@ -219,6 +255,79 @@ export default function UsersPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                 <button type="button" className="btn-secondary" onClick={() => setResetModalUser(null)}>Cancel</button>
                 <button type="submit" className="btn-primary">Update Password</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editModalUser && (
+        <div className="modal-backdrop" onClick={() => setEditModalUser(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Edit User Details</h2>
+              <button onClick={() => setEditModalUser(null)} style={{ border: 0, background: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveEdit}>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Full Name</label>
+                  <input
+                    className="input-field"
+                    value={editForm.name}
+                    onChange={e => setEditForm(current => ({ ...current, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email Address</label>
+                  <input
+                    className="input-field"
+                    type="email"
+                    value={editForm.email}
+                    onChange={e => setEditForm(current => ({ ...current, email: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Phone Number</label>
+                  <input
+                    className="input-field"
+                    value={editForm.phone}
+                    onChange={e => setEditForm(current => ({ ...current, phone: e.target.value }))}
+                    placeholder="+91..."
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">System Role</label>
+                  {editModalUser.role === 'super_admin' ? (
+                    <input
+                      className="input-field"
+                      value="Super Admin (Root Account)"
+                      disabled
+                      style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                    />
+                  ) : (
+                    <ThemeSelect
+                      value={editForm.role}
+                      onChange={e => setEditForm(current => ({ ...current, role: e.target.value }))}
+                    >
+                      {ROLES.map(role => (
+                        <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>
+                      ))}
+                    </ThemeSelect>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
+                <button type="button" className="btn-secondary" onClick={() => setEditModalUser(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Save Changes
+                </button>
               </div>
             </form>
           </div>

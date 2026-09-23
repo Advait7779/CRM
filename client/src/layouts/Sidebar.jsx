@@ -15,39 +15,26 @@ const NAV_ITEMS = [
   { path: '/my-work',   icon: ClipboardCheck,  label: 'My Work & HR',   color: '#6366f1' },
   { path: '/calendar',  icon: Calendar,        label: 'Calendar',       color: '#ef4444' },
   { path: '/chat',      icon: MessageSquare,   label: 'Chat',           color: '#10b981', isChat: true },
-  {
-    label: 'Sales', icon: Zap, color: '#f59e0b', children: [
-      { path: '/leads',      icon: Users,    label: 'Lead Management', color: '#fb923c' }, 
-      { path: '/customers',  icon: UserCheck,label: 'Customers',       color: '#10b981' },
-      { path: '/quotations', icon: FileText, label: 'Quotations',      color: '#3b82f6' },
-    ]
-  },
-  {
-    label: 'Operations', icon: Wrench, color: '#8b5cf6', children: [
-      { path: '/installations', icon: Wrench,     label: 'Installations',  color: '#8b5cf6' },
-      { path: '/renewals',      icon: RefreshCw,  label: 'Renewals',       color: '#ec4899' },
-      { path: '/tickets',       icon: HeadphonesIcon, label: 'Service Tickets', color: '#fb7185' },
-    ]
-  },
-  {
-    label: 'Finance', icon: CreditCard, color: '#f59e0b', children: [
-      { path: '/accounts', icon: CreditCard, label: 'Accounts', color: '#fb923c' },
-    ]
-  },
+  { path: '/customers', icon: UserCheck,       label: 'Customers',      color: '#10b981' },
+  { path: '/installations', icon: Wrench,          label: 'Installations',  color: '#8b5cf6' },
+  { path: '/renewals',      icon: RefreshCw,       label: 'Renewals',       color: '#ec4899' },
+  // {
+  //   label: 'Finance', icon: CreditCard, color: '#f59e0b', children: [
+  //     { path: '/accounts', icon: CreditCard, label: 'Accounts', color: '#fb923c' },
+  //   ]
+  // },
+  { path: '/inventory',    icon: Package,         label: 'Inventory',      color: '#10b981' },
+  { path: '/users',        icon: Shield,          label: 'System Users',   color: '#f97316' },
   {
     label: 'Management', icon: Shield, color: '#06b6d4', children: [
-      { path: '/inventory',  icon: Package,  label: 'Inventory', color: '#10b981' },
-      { path: '/employees',  icon: UserCog,  label: 'Employees', color: '#a78bfa' },
-      { path: '/hrms',       icon: ClipboardCheck, label: 'HRMS', color: '#06b6d4' },
-      { path: '/users',      icon: Shield,   label: 'System Users', color: '#f97316' },
+      { path: '/employees',  icon: UserCog,       label: 'Employees',      color: '#a78bfa' },
+      { path: '/hrms',       icon: ClipboardCheck,label: 'HRMS',           color: '#06b6d4' },
     ]
   },
 ]
 
 const PATH_ROLES = {
-  '/leads': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
   '/customers': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
-  '/quotations': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
   '/installations': ['super_admin', 'director', 'installation_manager', 'gps_installer', 'cctv_technician', 'website_developer'],
   '/renewals': ['super_admin', 'director', 'sales_manager', 'sales_executive', 'accounts'],
   '/tickets': ['super_admin', 'director', 'support_executive', 'installation_manager', 'gps_installer', 'cctv_technician'],

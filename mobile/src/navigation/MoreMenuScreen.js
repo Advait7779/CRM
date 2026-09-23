@@ -46,9 +46,7 @@ export default function MoreMenuScreen({ navigation }) {
     {
       title: 'SALES & CUSTOMERS',
       items: [
-        { title: 'Leads Pipeline', desc: 'Prospect inquiries & follow-ups', icon: Target, color: '#ec4899', screen: 'Leads' },
         { title: 'Service Renewals', desc: 'Expiring client contracts', icon: RefreshCw, color: '#f59e0b', screen: 'Renewals' },
-        { title: 'Quotations', desc: 'Pricing estimates & proposals', icon: FileCheck, color: '#3b82f6', screen: 'Quotations' },
       ]
     },
     {

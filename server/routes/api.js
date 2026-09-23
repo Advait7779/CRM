@@ -497,7 +497,14 @@ router.put('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async (r
       return res.status(403).json({ message: 'Forbidden: Cannot demote Super Admin root account.' });
     }
   }
-  const payload = cleanBody(req.body, ['name', 'phone', 'role']);
+  const payload = cleanBody(req.body, ['name', 'email', 'phone', 'role']);
+  if (payload.email) {
+    payload.email = payload.email.toLowerCase().trim();
+    const existing = await prisma.users.findUnique({ where: { email: payload.email } });
+    if (existing && existing.id !== user.id) {
+      return res.status(409).json({ message: 'Email is already registered to another account.' });
+    }
+  }
   if (payload.role && payload.role !== 'super_admin' && !ASSIGNABLE_USER_ROLES.includes(payload.role)) {
     return res.status(400).json({ message: 'Invalid or protected user role.' });
   }
@@ -2360,14 +2367,33 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
   const canFinance = FINANCE.includes(req.user.role);
   const canTickets = [...SUPPORT, ...OPERATIONS].includes(req.user.role);
   const canRenewals = canSales || canFinance;
-  const [totalLeads, totalCustomers, openTickets, pendingInvoices, renewalsDueSoon, recentLeads, leadsBySource, outstandingRows, revenueRows] = await Promise.all([
+
+  const [
+    totalLeads,
+    totalCustomers,
+    openTickets,
+    pendingInvoices,
+    renewalsDueSoon,
+    recentLeads,
+    leadsBySource,
+    recentCustomers,
+    outstandingRows,
+    revenueRows,
+    activeInstallations,
+    pendingTasks,
+    allCustomersList,
+    inventoryItems,
+    allInstallations,
+    allTasks
+  ] = await Promise.all([
     canSales ? prisma.leads.count() : 0,
     prisma.customers.count(),
     canTickets ? prisma.tickets.count({ where: { status: { in: ['Open', 'In_Progress'] } } }) : 0,
     canFinance ? prisma.invoices.count({ where: { status: { in: ['Unpaid', 'Overdue', 'Partially_Paid'] } } }) : 0,
-    canRenewals ? prisma.renewals.count({ where: { nextDue: { gte: now, lte: sevenDaysFromNow } } }) : 0,
+    prisma.renewals.count({ where: { nextDue: { gte: now, lte: sevenDaysFromNow } } }),
     canSales ? prisma.leads.findMany({ orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, name: true, company: true, phone: true, source: true, service: true, status: true } }) : [],
     canSales ? prisma.leads.groupBy({ by: ['source'], _count: { id: true } }) : [],
+    prisma.customers.findMany({ orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, name: true, contact: true, phone: true, services: true, status: true, createdAt: true } }),
     canFinance ? prisma.$queryRaw`
       SELECT COALESCE(SUM(GREATEST(i."total" - COALESCE(p.paid, 0), 0)), 0)::text AS value
       FROM "Invoices" i
@@ -2379,10 +2405,104 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
       GROUP BY TO_CHAR("date", 'YYYY-MM')
       ORDER BY month DESC
       LIMIT 6
-    ` : []
+    ` : [],
+    prisma.installations.count({ where: { status: { in: ['Pending', 'In_Progress'] } } }),
+    prisma.tasks.count({ where: { status: { in: ['Pending', 'Ongoing'] } } }),
+    prisma.customers.findMany({ select: { id: true, services: true, createdAt: true } }),
+    prisma.inventories.findMany({ select: { stock: true, min: true, status: true } }),
+    prisma.installations.findMany({ select: { id: true, createdAt: true, date: true } }),
+    prisma.tasks.findMany({ select: { id: true, createdAt: true } })
   ]);
+
   const pendingRevenue = Number(outstandingRows[0]?.value || 0);
   const revenueHistory = revenueRows.reverse().map((item) => ({ month: item.month, revenue: Number(item.revenue || 0) }));
+
+  // Low stock inventory calculation
+  const lowStockCount = inventoryItems.filter(item => (item.stock || 0) <= (item.min || 0) || ['LOW', 'OUT', 'Low Stock', 'Out of Stock'].includes(item.status)).length;
+
+  // Subscribed services distribution
+  const serviceCounts = {};
+  for (const c of allCustomersList) {
+    let sList = [];
+    if (Array.isArray(c.services)) sList = c.services;
+    else if (typeof c.services === 'string') {
+      try {
+        const parsed = JSON.parse(c.services);
+        if (Array.isArray(parsed)) sList = parsed;
+      } catch {
+        sList = c.services.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+    for (const raw of sList) {
+      const s = String(raw).trim();
+      let normalized = s;
+      const lower = s.toLowerCase();
+      if (lower.includes('gps')) normalized = 'GPS';
+      else if (lower.includes('cctv') || lower.includes('camera')) normalized = 'CCTV';
+      else if (lower.includes('web')) normalized = 'Website';
+      else if (lower.includes('waba') || lower.includes('whatsapp')) normalized = 'Waba';
+      else if (lower.includes('sms')) normalized = 'SMS';
+      else if (lower.includes('rcs')) normalized = 'RCS';
+      else if (lower.includes('voice')) normalized = 'Voice';
+
+      serviceCounts[normalized] = (serviceCounts[normalized] || 0) + 1;
+    }
+  }
+
+  const SERVICE_COLORS = {
+    GPS: '#3b82f6',
+    CCTV: '#10b981',
+    Website: '#6366f1',
+    SMS: '#f59e0b',
+    RCS: '#ec4899',
+    Voice: '#8b5cf6',
+    Waba: '#22c55e'
+  };
+
+  const servicesDistribution = Object.entries(serviceCounts).map(([service, count]) => ({
+    service,
+    count,
+    color: SERVICE_COLORS[service] || '#94a3b8'
+  }));
+
+  // Build 6 months operations history
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const operationsHistory = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = `${monthNames[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`;
+    operationsHistory.push({ key, month: label, installations: 0, tasks: 0, customers: 0 });
+  }
+
+  for (const inst of allInstallations) {
+    const d = inst.date || inst.createdAt;
+    if (d) {
+      const dt = new Date(d);
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      const m = operationsHistory.find(item => item.key === key);
+      if (m) m.installations++;
+    }
+  }
+
+  for (const t of allTasks) {
+    if (t.createdAt) {
+      const dt = new Date(t.createdAt);
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      const m = operationsHistory.find(item => item.key === key);
+      if (m) m.tasks++;
+    }
+  }
+
+  for (const c of allCustomersList) {
+    if (c.createdAt) {
+      const dt = new Date(c.createdAt);
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      const m = operationsHistory.find(item => item.key === key);
+      if (m) m.customers++;
+    }
+  }
+
   res.json({
     totalLeads,
     totalCustomers,
@@ -2391,8 +2511,14 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
     renewalsDueSoon,
     pendingRevenue,
     recentLeads,
+    recentCustomers,
     leadsBySource: leadsBySource.map((item) => ({ source: item.source, count: item._count.id })),
-    revenueHistory
+    revenueHistory,
+    activeInstallations,
+    pendingTasks,
+    lowStockCount,
+    servicesDistribution,
+    operationsHistory
   });
 }));
 

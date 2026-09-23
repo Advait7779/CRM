@@ -365,118 +365,50 @@ export default function SidebarDrawer({ navigationRef }) {
               </TouchableOpacity>
             )}
 
-            {/* Collapsible: Sales */}
-            {(canAccessScreen(role, 'Leads') || canAccessScreen(role, 'Customers') || canAccessScreen(role, 'Quotations')) && (
-              <View style={styles.accordionContainer}>
-                <TouchableOpacity
-                  style={styles.navItem}
-                  onPress={() => toggleSection('Sales')}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.itemLeft}>
-                    <Zap size={19} color="#f59e0b" />
-                    <Text style={styles.itemLabel}>Sales</Text>
-                  </View>
-                  {openSections.Sales ? (
-                    <ChevronDown size={16} color="#64748b" />
-                  ) : (
-                    <ChevronRight size={16} color="#64748b" />
-                  )}
-                </TouchableOpacity>
-                {openSections.Sales && (
-                  <View style={styles.subList}>
-                    {canAccessScreen(role, 'Leads') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Leads')}
-                        activeOpacity={0.7}
-                      >
-                        <Users size={16} color="#fb923c" />
-                        <Text style={styles.subItemLabel}>Lead Management</Text>
-                      </TouchableOpacity>
-                    )}
-                    {canAccessScreen(role, 'Customers') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('MainTabs', { screen: 'CustomersTab' })}
-                        activeOpacity={0.7}
-                      >
-                        <UserCheck size={16} color="#10b981" />
-                        <Text style={styles.subItemLabel}>Customers</Text>
-                      </TouchableOpacity>
-                    )}
-                    {canAccessScreen(role, 'Quotations') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Quotations')}
-                        activeOpacity={0.7}
-                      >
-                        <FileText size={16} color="#3b82f6" />
-                        <Text style={styles.subItemLabel}>Quotations</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
+            {/* Customers */}
+            {canAccessScreen(role, 'Customers') && (
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => navigateTo('MainTabs', { screen: 'CustomersTab' })}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemLeft}>
+                  <UserCheck size={19} color="#10b981" />
+                  <Text style={styles.itemLabel}>Customers</Text>
+                </View>
+              </TouchableOpacity>
             )}
 
-            {/* Collapsible: Operations */}
-            {(canAccessScreen(role, 'Installations') || canAccessScreen(role, 'Renewals') || canAccessScreen(role, 'Tickets')) && (
-              <View style={styles.accordionContainer}>
-                <TouchableOpacity
-                  style={styles.navItem}
-                  onPress={() => toggleSection('Operations')}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.itemLeft}>
-                    <Wrench size={19} color="#8b5cf6" />
-                    <Text style={styles.itemLabel}>Operations</Text>
-                  </View>
-                  {openSections.Operations ? (
-                    <ChevronDown size={16} color="#64748b" />
-                  ) : (
-                    <ChevronRight size={16} color="#64748b" />
-                  )}
-                </TouchableOpacity>
-                {openSections.Operations && (
-                  <View style={styles.subList}>
-                    {canAccessScreen(role, 'Installations') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Installations')}
-                        activeOpacity={0.7}
-                      >
-                        <Wrench size={16} color="#8b5cf6" />
-                        <Text style={styles.subItemLabel}>Installations</Text>
-                      </TouchableOpacity>
-                    )}
-                    {canAccessScreen(role, 'Renewals') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Renewals')}
-                        activeOpacity={0.7}
-                      >
-                        <RefreshCw size={16} color="#ec4899" />
-                        <Text style={styles.subItemLabel}>Renewals</Text>
-                      </TouchableOpacity>
-                    )}
-                    {canAccessScreen(role, 'Tickets') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Tickets')}
-                        activeOpacity={0.7}
-                      >
-                        <Headphones size={16} color="#fb7185" />
-                        <Text style={styles.subItemLabel}>Service Tickets</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
+            {/* Installations */}
+            {canAccessScreen(role, 'Installations') && (
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => navigateTo('Installations')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemLeft}>
+                  <Wrench size={19} color="#8b5cf6" />
+                  <Text style={styles.itemLabel}>Installations</Text>
+                </View>
+              </TouchableOpacity>
             )}
 
-            {/* Collapsible: Finance */}
-            {canAccessScreen(role, 'Accounts') && (
+            {/* Renewals */}
+            {canAccessScreen(role, 'Renewals') && (
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => navigateTo('Renewals')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemLeft}>
+                  <RefreshCw size={19} color="#ec4899" />
+                  <Text style={styles.itemLabel}>Renewals</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Collapsible: Finance (Commented out for now) */}
+            {/* {canAccessScreen(role, 'Accounts') && (
               <View style={styles.accordionContainer}>
                 <TouchableOpacity
                   style={styles.navItem}
@@ -506,10 +438,38 @@ export default function SidebarDrawer({ navigationRef }) {
                   </View>
                 )}
               </View>
+            )} */}
+
+            {/* Inventory */}
+            {canAccessScreen(role, 'Inventory') && (
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => navigateTo('Inventory')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemLeft}>
+                  <Package size={19} color="#10b981" />
+                  <Text style={styles.itemLabel}>Inventory</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* System Users */}
+            {canAccessScreen(role, 'Users') && (
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => navigateTo('Users')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemLeft}>
+                  <ShieldCheck size={19} color="#f97316" />
+                  <Text style={styles.itemLabel}>System Users</Text>
+                </View>
+              </TouchableOpacity>
             )}
 
             {/* Collapsible: Management */}
-            {(canAccessScreen(role, 'Inventory') || canAccessScreen(role, 'Employees') || canAccessScreen(role, 'Users')) && (
+            {canAccessScreen(role, 'Employees') && (
               <View style={styles.accordionContainer}>
                 <TouchableOpacity
                   style={styles.navItem}
@@ -528,46 +488,22 @@ export default function SidebarDrawer({ navigationRef }) {
                 </TouchableOpacity>
                 {openSections.Management && (
                   <View style={styles.subList}>
-                    {canAccessScreen(role, 'Inventory') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Inventory')}
-                        activeOpacity={0.7}
-                      >
-                        <Package size={16} color="#10b981" />
-                        <Text style={styles.subItemLabel}>Inventory</Text>
-                      </TouchableOpacity>
-                    )}
-                    {canAccessScreen(role, 'Employees') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Employees')}
-                        activeOpacity={0.7}
-                      >
-                        <Users size={16} color="#a78bfa" />
-                        <Text style={styles.subItemLabel}>Employees</Text>
-                      </TouchableOpacity>
-                    )}
-                    {canAccessScreen(role, 'Employees') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Employees')}
-                        activeOpacity={0.7}
-                      >
-                        <ClipboardCheck size={16} color="#06b6d4" />
-                        <Text style={styles.subItemLabel}>HRMS</Text>
-                      </TouchableOpacity>
-                    )}
-                    {canAccessScreen(role, 'Users') && (
-                      <TouchableOpacity
-                        style={styles.subItem}
-                        onPress={() => navigateTo('Users')}
-                        activeOpacity={0.7}
-                      >
-                        <ShieldCheck size={16} color="#f97316" />
-                        <Text style={styles.subItemLabel}>System Users</Text>
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      style={styles.subItem}
+                      onPress={() => navigateTo('Employees')}
+                      activeOpacity={0.7}
+                    >
+                      <Users size={16} color="#a78bfa" />
+                      <Text style={styles.subItemLabel}>Employees</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.subItem}
+                      onPress={() => navigateTo('Employees')}
+                      activeOpacity={0.7}
+                    >
+                      <ClipboardCheck size={16} color="#06b6d4" />
+                      <Text style={styles.subItemLabel}>HRMS</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
