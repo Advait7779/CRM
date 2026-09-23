@@ -1,0 +1,64 @@
+x-app-environment: &app-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 5001
+  TZ: ${TZ:-Asia/Kolkata}
+  APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Kolkata}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB:-service_management}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+  CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN}
+  ADMIN_NAME: ${ADMIN_NAME:-Super Admin}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+  UPLOAD_DIR: /app/uploads
+  UPLOAD_MAX_TOTAL_BYTES: ${UPLOAD_MAX_TOTAL_BYTES:-2147483648}
+  ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-true}
+
+services:
+  postgres_db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-service_management}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: service-management-crm:${IMAGE_TAG:-latest}
+    restart: "no"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    environment: *app-environment
+    command: ["npm", "run", "migrate"]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: service-management-crm:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment: *app-environment
+    volumes:
+      - uploads_data:/app/uploads
+    expose:
+      - "5001"
+
+volumes:
+  pgdata:
+  uploads_data:

@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "Service CRM",
+    "slug": "service-management-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "../client/public/logo.png",
+    "splash": {
+      "image": "../client/public/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f8fafc"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "buildNumber": "1.0.0"
+    },
+    "android": {
+      "package": "com.servicemanagement.crm",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "../client/public/logo.png",
+        "backgroundColor": "#f8fafc"
+      },
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Service CRM to access your photos so you can send images in chat.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ],
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Service CRM to use your location when you check in or check out at a customer site."
+        }
+      ]
+    ]
+  }
+}

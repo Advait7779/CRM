@@ -1,0 +1,19 @@
+{
+  "name": "service-management",
+  "version": "1.0.0",
+  "description": "Service Management CRM - Full Stack App",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix client",
+    "start": "node server/index.js",
+    "start:production": "npm run migrate --prefix server && node server/index.js",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "npm run dev --prefix client",
+    "install:all": "npm ci --prefix server && npm ci --prefix client",
+    "db:migrate": "npm run migrate --prefix server",
+    "db:status": "npm run prisma:status --prefix server",
+    "seed:demo": "node server/sync.js",
+    "test": "npm run prisma:validate --prefix server && npm test --prefix server && npm run lint --prefix client",
+    "check": "npm run test && npm run build"
+  }
+}

@@ -1,0 +1,613 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ActivityLogs {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  userName  String?  @db.VarChar(255)
+  action    String   @db.VarChar(255)
+  entity    String   @db.VarChar(255)
+  entityId  String?  @db.VarChar(255)
+  metadata  Json?
+  ip        String?  @db.VarChar(255)
+  createdAt DateTime @db.Timestamptz(6)
+
+  @@index([createdAt], map: "activity_logs_created_at")
+  @@index([entity, entityId], map: "activity_logs_entity_entity_id")
+  @@index([userId], map: "activity_logs_user_id")
+}
+
+model Attendances {
+  id          Int                     @id @default(autoincrement())
+  employeeId  Int
+  date        DateTime                @db.Date
+  status      enum_Attendances_status
+  checkIn     DateTime?               @db.Time(6)
+  checkOut    DateTime?               @db.Time(6)
+  hoursWorked Float?
+  recordedBy  String?                 @db.VarChar(255)
+  createdAt   DateTime                @db.Timestamptz(6)
+  updatedAt   DateTime                @db.Timestamptz(6)
+  Employees   Employees               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date], map: "attendances_employee_id_date")
+}
+
+model CustomerDocuments {
+  id           Int       @id @default(autoincrement())
+  customerId   Int
+  originalName String    @db.VarChar(255)
+  storedName   String    @unique @db.VarChar(255)
+  mimeType     String    @db.VarChar(255)
+  size         Int
+  uploadedBy   String?   @db.VarChar(255)
+  createdAt    DateTime  @db.Timestamptz(6)
+  updatedAt    DateTime  @db.Timestamptz(6)
+  Customers    Customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId], map: "customer_documents_customer_id")
+}
+
+model EmployeeDocuments {
+  id           Int       @id @default(autoincrement())
+  employeeId   Int
+  type         String    @default("Other") @db.VarChar(100)
+  originalName String    @db.VarChar(255)
+  storedName   String    @unique @db.VarChar(255)
+  mimeType     String    @db.VarChar(255)
+  size         Int
+  uploadedBy   String?   @db.VarChar(255)
+  createdAt    DateTime  @db.Timestamptz(6)
+  updatedAt    DateTime  @db.Timestamptz(6)
+  Employees    Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId], map: "employee_documents_employee_id")
+}
+
+model Customers {
+  id                    Int                     @id @default(autoincrement())
+  name                  String                  @db.VarChar(255)
+  contact               String?                 @db.VarChar(255)
+  phone                 String                  @db.VarChar(255)
+  email                 String?                 @db.VarChar(255)
+  gst                   String?                 @db.VarChar(255)
+  address               String?
+  services              String?                 @default("[]")
+  vehicles              Int?                    @default(0)
+  cctv                  Int?                    @default(0)
+  domain                String?                 @db.VarChar(255)
+  hosting               String?                 @db.VarChar(255)
+  renewalDate           DateTime?               @db.Date
+  status                String?                 @default("Active") @db.VarChar(255)
+  latitude              Float?
+  longitude             Float?
+  createdAt             DateTime                @db.Timestamptz(6)
+  updatedAt             DateTime                @db.Timestamptz(6)
+  CustomerDocuments     CustomerDocuments[]
+  FieldVisits           FieldVisits[]
+  Installations         Installations[]
+  InventoryTransactions InventoryTransactions[]
+  Invoices              Invoices[]
+  Leads                 Leads[]
+  Quotations            Quotations[]
+  Renewals              Renewals[]
+  Tickets               Tickets[]
+
+  @@index([name], map: "customers_name")
+  @@index([status], map: "customers_status")
+}
+
+model Employees {
+  id            Int                           @id @default(autoincrement())
+  name          String                        @db.VarChar(255)
+  dept          enum_Employees_dept
+  role          String?                       @db.VarChar(255)
+  phone         String                        @db.VarChar(255)
+  email         String?                       @db.VarChar(255)
+  status        String?                       @default("Present") @db.VarChar(255)
+  createdAt     DateTime                      @db.Timestamptz(6)
+  updatedAt     DateTime                      @db.Timestamptz(6)
+  basicSalary      Decimal?                      @default(20000) @db.Decimal(14, 2)
+  incentive        Decimal?                      @default(0) @db.Decimal(14, 2)
+  deduction        Decimal?                      @default(0) @db.Decimal(14, 2)
+  payrollStatus    enum_Employees_payrollStatus? @default(Pending)
+  Attendances      Attendances[]
+  EmployeeDocuments EmployeeDocuments[]
+  FieldVisits      FieldVisits[]
+  LeaveRequests    LeaveRequests[]
+  Payrolls         Payrolls[]
+
+  @@index([dept], map: "employees_dept")
+  @@index([status], map: "employees_status")
+}
+
+model Installations {
+  id              Int                        @id @default(autoincrement())
+  type            enum_Installations_type
+  customerId      Int?
+  customer        String                     @db.VarChar(255)
+  vehicle         String?                    @db.VarChar(255)
+  imei            String?                    @db.VarChar(255)
+  sim             String?                    @db.VarChar(255)
+  installer       String?                    @db.VarChar(255)
+  site            String?
+  cameras         Int?                       @default(0)
+  dvr             String?                    @db.VarChar(255)
+  tech            String?                    @db.VarChar(255)
+  domain          String?                    @db.VarChar(255)
+  hosting         String?                    @db.VarChar(255)
+  design          String?                    @default("Pending") @db.VarChar(255)
+  dev             String?                    @default("Pending") @db.VarChar(255)
+  goLive          DateTime?                  @db.Date
+  date            DateTime?                  @db.Date
+  status          enum_Installations_status? @default(Pending)
+  reportPhoto     String?                    @db.VarChar(255)
+  reportSignature String?                    @db.VarChar(255)
+  reportNotes     String?
+  createdAt       DateTime                   @db.Timestamptz(6)
+  updatedAt       DateTime                   @db.Timestamptz(6)
+  Customers       Customers?                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  FieldVisits     FieldVisits[]
+
+  @@index([customerId], map: "installations_customer_id")
+  @@index([date], map: "installations_date")
+  @@index([status], map: "installations_status")
+}
+
+model Inventories {
+  id                    Int                     @id @default(autoincrement())
+  name                  String                  @db.VarChar(255)
+  category              String                  @db.VarChar(255)
+  barcode               String                  @db.VarChar(255)
+  stock                 Int?                    @default(0)
+  min                   Int?                    @default(10)
+  price                 Decimal?                @default(0) @db.Decimal(14, 2)
+  status                String?                 @default("OK") @db.VarChar(255)
+  createdAt             DateTime                @db.Timestamptz(6)
+  updatedAt             DateTime                @db.Timestamptz(6)
+  InventoryTransactions InventoryTransactions[]
+
+  @@index([barcode], map: "inventories_barcode")
+  @@index([status], map: "inventories_status")
+}
+
+model InventoryTransactions {
+  id           Int                                  @id @default(autoincrement())
+  inventoryId  Int
+  customerId   Int?
+  direction    enum_InventoryTransactions_direction
+  quantity     Int
+  balanceAfter Int
+  purpose      String?                              @db.VarChar(255)
+  customer     String?                              @db.VarChar(255)
+  reference    String?                              @db.VarChar(255)
+  recordedBy   String?                              @db.VarChar(255)
+  createdAt    DateTime                             @db.Timestamptz(6)
+  updatedAt    DateTime                             @db.Timestamptz(6)
+  Inventories  Inventories                          @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  Customers    Customers?                           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt], map: "inventory_transactions_created_at")
+  @@index([customerId], map: "inventory_transactions_customer_id")
+  @@index([inventoryId], map: "inventory_transactions_inventory_id")
+}
+
+model Invoices {
+  id         String                @id @db.VarChar(255)
+  customerId Int?
+  customer   String                @db.VarChar(255)
+  date       DateTime              @db.Date
+  amount     Decimal               @db.Decimal(14, 2)
+  gst        Decimal               @db.Decimal(5, 2)
+  total      Decimal               @db.Decimal(14, 2)
+  status    enum_Invoices_status? @default(Unpaid)
+  createdAt DateTime              @db.Timestamptz(6)
+  updatedAt DateTime              @db.Timestamptz(6)
+  Payments  Payments[]
+  Customers Customers?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([customerId], map: "invoices_customer_id")
+  @@index([date], map: "invoices_date")
+  @@index([status], map: "invoices_status")
+}
+
+model Leads {
+  id        Int                @id @default(autoincrement())
+  name      String             @db.VarChar(255)
+  phone     String             @db.VarChar(255)
+  email     String?            @db.VarChar(255)
+  company   String?            @db.VarChar(255)
+  source    enum_Leads_source? @default(Website)
+  service   String             @db.VarChar(255)
+  status    enum_Leads_status? @default(New)
+  exec      String?            @db.VarChar(255)
+  followUp  DateTime?          @db.Date
+  notes               String?
+  convertedCustomerId Int?
+  createdAt           DateTime           @db.Timestamptz(6)
+  updatedAt           DateTime           @db.Timestamptz(6)
+  Customers           Customers?         @relation(fields: [convertedCustomerId], references: [id], onDelete: SetNull)
+
+  @@index([convertedCustomerId], map: "leads_converted_customer_id")
+  @@index([createdAt], map: "leads_created_at")
+  @@index([status], map: "leads_status")
+  @@index([source], map: "leads_source")
+}
+
+model Notifications {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  type      String?  @default("system") @db.VarChar(255)
+  title     String   @db.VarChar(255)
+  message   String
+  link      String?  @db.VarChar(255)
+  dedupeKey String?  @unique @db.VarChar(255)
+  read      Boolean? @default(false)
+  createdAt DateTime @db.Timestamptz(6)
+  updatedAt DateTime @db.Timestamptz(6)
+
+  @@index([userId, read], map: "notifications_user_id_read")
+}
+
+model Payments {
+  id         String   @id @db.VarChar(255)
+  invoiceId  String   @db.VarChar(255)
+  customer   String   @db.VarChar(255)
+  amount     Decimal  @db.Decimal(14, 2)
+  method     String?  @default("NEFT") @db.VarChar(255)
+  date       DateTime @db.Date
+  reference  String?  @db.VarChar(255)
+  recordedBy String?  @db.VarChar(255)
+  createdAt  DateTime @db.Timestamptz(6)
+  updatedAt  DateTime @db.Timestamptz(6)
+  Invoices   Invoices @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([date], map: "payments_date")
+  @@index([invoiceId], map: "payments_invoice_id")
+}
+
+model Payrolls {
+  id         Int                   @id @default(autoincrement())
+  employeeId Int
+  period     String                @db.VarChar(7)
+  basic               Decimal                @db.Decimal(14, 2)
+  incentive           Decimal?               @default(0) @db.Decimal(14, 2)
+  deduction           Decimal?               @default(0) @db.Decimal(14, 2)
+  workingDays         Int                    @default(0)
+  presentDays         Float                  @default(0)
+  leaveDays           Float                  @default(0)
+  absentDays          Float                  @default(0)
+  lateDays            Int                    @default(0)
+  attendanceDeduction Decimal                @default(0) @db.Decimal(14, 2)
+  gross               Decimal                @default(0) @db.Decimal(14, 2)
+  net                 Decimal                @default(0) @db.Decimal(14, 2)
+  status              enum_Payrolls_status? @default(Pending)
+  paidAt     DateTime?             @db.Timestamptz(6)
+  paidBy     String?               @db.VarChar(255)
+  createdAt  DateTime              @db.Timestamptz(6)
+  updatedAt  DateTime              @db.Timestamptz(6)
+  Employees  Employees             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, period], map: "payrolls_employee_id_period")
+  @@index([period], map: "payrolls_period")
+  @@index([status], map: "payrolls_status")
+}
+
+model Quotations {
+  id         String                  @id @db.VarChar(255)
+  customerId Int?
+  customer   String                  @db.VarChar(255)
+  date       DateTime                @db.Date
+  items      String
+  amount     Decimal                 @default(0) @db.Decimal(14, 2)
+  subtotal   Decimal                 @default(0) @db.Decimal(14, 2)
+  taxAmount  Decimal                 @default(0) @db.Decimal(14, 2)
+  taxable    Boolean                 @default(true)
+  status     enum_Quotations_status? @default(Pending_Approval)
+  createdAt  DateTime                @db.Timestamptz(6)
+  updatedAt  DateTime                @db.Timestamptz(6)
+  Customers  Customers?              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([customerId], map: "quotations_customer_id")
+  @@index([date], map: "quotations_date")
+  @@index([status], map: "quotations_status")
+}
+
+model Renewals {
+  id         Int       @id @default(autoincrement())
+  customerId Int?
+  customer   String    @db.VarChar(255)
+  type      String    @db.VarChar(255)
+  lastDate  DateTime? @db.Date
+  nextDue   DateTime  @db.Date
+  amount     Decimal   @db.Decimal(14, 2)
+  daysLeft  Int?
+  status    String?   @default("Active") @db.VarChar(255)
+  createdAt DateTime  @db.Timestamptz(6)
+  updatedAt DateTime  @db.Timestamptz(6)
+  Customers Customers? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([customerId], map: "renewals_customer_id")
+  @@index([nextDue], map: "renewals_next_due")
+  @@index([status], map: "renewals_status")
+}
+
+model Tasks {
+  id        Int                  @id @default(autoincrement())
+  title     String               @db.VarChar(255)
+  desc      String?
+  dept      enum_Tasks_dept
+  assignedTo     String              @db.VarChar(255)
+  assignedUserId Int?
+  priority       enum_Tasks_priority? @default(Medium)
+  status    enum_Tasks_status?   @default(Pending)
+  due       DateTime?            @db.Date
+  createdAt DateTime             @db.Timestamptz(6)
+  updatedAt   DateTime             @db.Timestamptz(6)
+  Users       Users?                @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  FieldVisits FieldVisits[]
+
+  @@index([assignedUserId], map: "tasks_assigned_user_id")
+  @@index([due], map: "tasks_due")
+  @@index([status], map: "tasks_status")
+}
+
+model Tickets {
+  id          Int                    @id @default(autoincrement())
+  customerId  Int?
+  customer    String                 @db.VarChar(255)
+  subject     String                 @db.VarChar(255)
+  service     String                 @db.VarChar(255)
+  priority    enum_Tickets_priority? @default(Medium)
+  status      enum_Tickets_status?   @default(Open)
+  resolution  String?                @default("Pending SLA") @db.VarChar(255)
+  createdAt   DateTime               @db.Timestamptz(6)
+  updatedAt   DateTime               @db.Timestamptz(6)
+  description String?
+  Customers   Customers?             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([customerId], map: "tickets_customer_id")
+  @@index([status], map: "tickets_status")
+  @@index([createdAt], map: "tickets_created_at")
+}
+
+model Users {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  email        String   @unique @db.VarChar(255)
+  password     String   @db.VarChar(255)
+  phone        String?  @db.VarChar(255)
+  role         String   @default("support_executive") @db.VarChar(255)
+  createdAt    DateTime @db.Timestamptz(6)
+  updatedAt    DateTime @db.Timestamptz(6)
+  tokenVersion Int      @default(0)
+  Tasks        Tasks[]
+}
+
+model LeaveRequests {
+  id          Int                       @id @default(autoincrement())
+  employeeId  Int
+  type        enum_LeaveRequests_type   @default(Paid)
+  startDate   DateTime                  @db.Date
+  endDate     DateTime                  @db.Date
+  days        Float
+  reason      String
+  status      enum_LeaveRequests_status @default(Pending)
+  reviewedBy  String?                   @db.VarChar(255)
+  reviewedAt  DateTime?                 @db.Timestamptz(6)
+  reviewNotes String?
+  createdAt   DateTime                  @db.Timestamptz(6)
+  updatedAt   DateTime                  @db.Timestamptz(6)
+  Employees   Employees                 @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, startDate], map: "leave_requests_employee_date")
+  @@index([status], map: "leave_requests_status")
+}
+
+model FieldVisits {
+  id                Int                     @id @default(autoincrement())
+  employeeId        Int
+  customerId        Int
+  taskId            Int?
+  installationId    Int?
+  status            enum_FieldVisits_status @default(In_Progress)
+  checkInAt         DateTime                @db.Timestamptz(6)
+  checkOutAt        DateTime?               @db.Timestamptz(6)
+  checkInLatitude   Float
+  checkInLongitude  Float
+  checkOutLatitude  Float?
+  checkOutLongitude Float?
+  accuracy          Float?
+  notes             String?
+  completionNotes   String?
+  proofPhoto        String?                 @db.VarChar(255)
+  signature         String?                 @db.VarChar(255)
+  createdAt         DateTime                @db.Timestamptz(6)
+  updatedAt         DateTime                @db.Timestamptz(6)
+  Employees         Employees               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  Customers         Customers               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  Tasks             Tasks?                  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  Installations     Installations?           @relation(fields: [installationId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, checkInAt], map: "field_visits_employee_date")
+  @@index([customerId, checkInAt], map: "field_visits_customer_date")
+  @@index([status], map: "field_visits_status")
+}
+
+model ChatMessages {
+  id             Int      @id @default(autoincrement())
+  senderId       Int
+  receiverId     Int?
+  groupId        Int?
+  message        String
+  attachment     String?  @db.VarChar(255)
+  attachmentName String?  @db.VarChar(255)
+  read           Boolean  @default(false)
+  createdAt      DateTime @db.Timestamptz(6)
+  updatedAt      DateTime @db.Timestamptz(6)
+
+  @@index([senderId, receiverId], map: "chat_messages_sender_receiver")
+  @@index([groupId], map: "chat_messages_group_id")
+  @@index([receiverId, read], map: "chat_messages_receiver_read")
+  @@index([createdAt], map: "chat_messages_created_at")
+}
+
+model ChatGroups {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(255)
+  description String?
+  avatarColor String?  @default("#10b981") @db.VarChar(50)
+  createdBy   Int
+  members     Json?
+  createdAt   DateTime @db.Timestamptz(6)
+  updatedAt   DateTime @db.Timestamptz(6)
+
+  @@index([createdAt], map: "chat_groups_created_at")
+}
+
+model ChatUploads {
+  storedName String @id @db.VarChar(255)
+  userId Int
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([userId], map: "chat_uploads_user")
+}
+
+model AppSettings {
+  key       String   @id @db.VarChar(255)
+  value     String?
+  updatedAt DateTime @db.Timestamptz(6)
+}
+
+
+enum enum_Attendances_status {
+  Present
+  Late
+  Absent
+  Leave
+}
+
+enum enum_Employees_dept {
+  Accountants
+  Sales
+  Support_Team @map("Support Team")
+  Developers
+  Technicians
+}
+
+enum enum_Employees_payrollStatus {
+  Pending
+  Paid
+}
+
+enum enum_Installations_status {
+  Pending
+  In_Progress @map("In Progress")
+  Completed
+}
+
+enum enum_Installations_type {
+  GPS
+  CCTV
+  Website
+}
+
+enum enum_InventoryTransactions_direction {
+  IN
+  OUT
+}
+
+enum enum_Invoices_status {
+  Paid
+  Partially_Paid @map("Partially Paid")
+  Unpaid
+  Overdue
+}
+
+enum enum_Leads_source {
+  Website
+  Facebook
+  WhatsApp
+  Reference
+  Call
+}
+
+enum enum_Leads_status {
+  New
+  Contacted
+  Demo_Given     @map("Demo Given")
+  Quotation_Sent @map("Quotation Sent")
+  Negotiation
+  Won
+  Lost
+  Converted
+}
+
+enum enum_Payrolls_status {
+  Pending
+  Paid
+}
+
+enum enum_LeaveRequests_type {
+  Paid
+  Sick
+  Unpaid
+  Other
+}
+
+enum enum_LeaveRequests_status {
+  Pending
+  Approved
+  Rejected
+  Cancelled
+}
+
+enum enum_FieldVisits_status {
+  In_Progress @map("In Progress")
+  Completed
+}
+
+enum enum_Quotations_status {
+  Pending_Approval @map("Pending Approval")
+  Approved
+  Converted
+  Rejected
+}
+
+enum enum_Tasks_dept {
+  Accountants
+  Sales
+  Support_Team @map("Support Team")
+  Developers
+  Technicians
+}
+
+enum enum_Tasks_priority {
+  High
+  Medium
+  Low
+}
+
+enum enum_Tasks_status {
+  Pending
+  Ongoing
+  Completed
+  Not_Completed @map("Not Completed")
+}
+
+enum enum_Tickets_priority {
+  High
+  Medium
+  Low
+}
+
+enum enum_Tickets_status {
+  Open
+  In_Progress @map("In Progress")
+  Resolved
+}

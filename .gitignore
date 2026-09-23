@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Environment variables — NEVER commit these
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+server/.env
+client/.env
+client/.env.local
+client/.env.production
+
+# Build output
+client/dist/
+client/build/
+mobile/dist-check/
+mobile/.expo/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+*.tmp
+*.temp
+
+# User uploads
+uploads/
+server/uploads/
+
+# Local database backups
+backups/

@@ -1,0 +1,57 @@
+x-app-environment: &app-environment
+  NODE_ENV: production
+  HOST: 0.0.0.0
+  PORT: 5001
+  TZ: ${TZ:-Asia/Kolkata}
+  APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Kolkata}
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+  DB_SSL: ${DB_SSL:-false}
+  DB_SSL_REJECT_UNAUTHORIZED: ${DB_SSL_REJECT_UNAUTHORIZED:-false}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+  CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN}
+  ADMIN_NAME: ${ADMIN_NAME:-Super Admin}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+  EMAIL_HOST: ${EMAIL_HOST:-}
+  EMAIL_PORT: ${EMAIL_PORT:-587}
+  EMAIL_USER: ${EMAIL_USER:-}
+  EMAIL_PASS: ${EMAIL_PASS:-}
+  UPLOAD_DIR: /app/uploads
+  UPLOAD_MAX_TOTAL_BYTES: ${UPLOAD_MAX_TOTAL_BYTES:-2147483648}
+  ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-true}
+
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: service-management-crm:${IMAGE_TAG:-latest}
+    restart: "no"
+    environment: *app-environment
+    command: ["npm", "run", "migrate"]
+
+  crm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: service-management-crm:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment: *app-environment
+    volumes:
+      - crm_uploads:/app/uploads
+    expose:
+      - "5001"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:5001/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  crm_uploads:
