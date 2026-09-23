@@ -8,10 +8,10 @@ ENV APP_TIME_ZONE=Asia/Kolkata
 
 RUN apk add --no-cache curl
 
-COPY package*.json ./
+COPY server/package*.json ./
 RUN npm ci --omit=dev
 
-COPY . ./
+COPY server/ ./
 RUN npm run prisma:generate
 
 RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
