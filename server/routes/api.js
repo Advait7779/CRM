@@ -1357,7 +1357,7 @@ router.get('/inventory/:id/transactions', authMiddleware, checkRole([...OPERATIO
   }));
 }));
 
-const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads'));
+const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads'));
 fs.mkdirSync(uploadDir, { recursive: true });
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
