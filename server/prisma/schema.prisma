@@ -228,6 +228,8 @@ model Leads {
   exec      String?            @db.VarChar(255)
   followUp  DateTime?          @db.Date
   notes               String?
+  justdialLeadId      String?          @unique @db.VarChar(255)
+  justdialPayload     Json?
   convertedCustomerId Int?
   createdAt           DateTime           @db.Timestamptz(6)
   updatedAt           DateTime           @db.Timestamptz(6)
@@ -535,6 +537,7 @@ enum enum_Leads_source {
   WhatsApp
   Reference
   Call
+  Justdial
 }
 
 enum enum_Leads_status {

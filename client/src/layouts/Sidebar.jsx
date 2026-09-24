@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { path: '/my-work',   icon: ClipboardCheck,  label: 'My Work & HR',   color: '#6366f1' },
   { path: '/calendar',  icon: Calendar,        label: 'Calendar',       color: '#ef4444' },
   { path: '/chat',      icon: MessageSquare,   label: 'Chat',           color: '#10b981', isChat: true },
+  { path: '/leads',     icon: Users,           label: 'Leads',          color: '#6366f1' },
   { path: '/customers', icon: UserCheck,       label: 'Customers',      color: '#10b981' },
   { path: '/installations', icon: Wrench,          label: 'Installations',  color: '#8b5cf6' },
   { path: '/renewals',      icon: RefreshCw,       label: 'Renewals',       color: '#ec4899' },
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
 ]
 
 const PATH_ROLES = {
+  '/leads': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
   '/customers': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
   '/installations': ['super_admin', 'director', 'installation_manager', 'gps_installer', 'cctv_technician', 'website_developer'],
   '/renewals': ['super_admin', 'director', 'sales_manager', 'sales_executive', 'accounts'],

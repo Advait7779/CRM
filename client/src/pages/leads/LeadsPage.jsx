@@ -8,19 +8,19 @@ import toast from 'react-hot-toast'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
 const LEAD_STATUSES = ['New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost']
-const LEAD_SOURCES  = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call']
+const LEAD_SOURCES  = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial']
 const SERVICES      = ['GPS Tracking', 'CCTV', 'Website Design', 'SMS Package', 'RCS Messaging', 'Voice Package', 'Digital Marketing']
 const EXECUTIVES    = ['Rahul Sharma', 'Priya Patel', 'Amit Singh', 'Sneha Joshi']
 
 const SOURCE_ICON = {
-  Website: Globe, Facebook: Share2, WhatsApp: MessageCircle, Reference: User, Call: Phone
+  Website: Globe, Facebook: Share2, WhatsApp: MessageCircle, Reference: User, Call: Phone, Justdial: Globe
 }
 const SOURCE_COLOR = {
-  Website: '#6366f1', Facebook: '#3b82f6', WhatsApp: '#10b981', Reference: '#f59e0b', Call: '#8b5cf6'
+  Website: '#6366f1', Facebook: '#3b82f6', WhatsApp: '#10b981', Reference: '#f59e0b', Call: '#8b5cf6', Justdial: '#f97316'
 }
 const STATUS_COLOR = {
   'New': '#60a5fa', 'Contacted': '#c084fc', 'Demo Given': '#f59e0b',
-  'Quotation Sent': '#fb923c', 'Negotiation': '#f97316', 'Won': '#10b981', 'Lost': '#ef4444'
+  'Quotation Sent': '#fb923c', 'Negotiation': '#f97316', 'Won': '#10b981', 'Lost': '#ef4444', 'Converted': '#10b981'
 }
 
 const EMPTY_FORM = {
@@ -74,12 +74,14 @@ function LeadModal({ lead, onClose, onSave, isNew }) {
             <div className="form-group">
               <label className="form-label">Service Interest</label>
               <ThemeSelect className="input-field" value={form.service} onChange={e => setForm(f => ({ ...f, service: e.target.value }))}>
+                {form.service && !SERVICES.includes(form.service) && <option value={form.service}>{form.service}</option>}
                 {SERVICES.map(s => <option key={s}>{s}</option>)}
               </ThemeSelect>
             </div>
             <div className="form-group">
               <label className="form-label">Lead Status</label>
               <ThemeSelect className="input-field" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                {form.status === 'Converted' && <option value="Converted">Converted</option>}
                 {LEAD_STATUSES.map(s => <option key={s}>{s}</option>)}
               </ThemeSelect>
             </div>

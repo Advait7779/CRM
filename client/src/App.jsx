@@ -44,7 +44,7 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
-        <Route path="leads" element={<Navigate to="/customers" replace />} />
+        <Route path="leads" element={<LeadsPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="customers/:id" element={<CustomerDetail />} />
         <Route path="quotations" element={<Navigate to="/customers" replace />} />

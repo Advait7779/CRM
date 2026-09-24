@@ -9,6 +9,7 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:status": "prisma migrate status",
+    "justdial:test": "node scripts/send-justdial-test.js",
     "migrations:verify": "node scripts/verify-migrations.js",
     "test": "node --test tests/*.test.js"
   },

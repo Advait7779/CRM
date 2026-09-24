@@ -14,6 +14,7 @@ require('./config/env');
 const { connectDB, prisma } = require('./config/prisma');
 const { jsonReplacer } = require('./utils/prismaData');
 const apiRouter = require('./routes/api');
+const { createJustdialRouter } = require('./routes/justdial');
 const { startScheduler } = require('./services/scheduler');
 const { isAllowedOrigin } = require('./utils/accessPolicy');
 
@@ -45,8 +46,13 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '16kb' }));
 app.use(compression());
-app.use(morgan(isProduction ? 'combined' : 'dev'));
+app.use(morgan(isProduction ? 'combined' : 'dev', {
+  // GET enquiries contain personal data and the endpoint path contains its secret.
+  skip: (req) => req.originalUrl.startsWith('/api/integrations/justdial/')
+}));
+app.use('/api/integrations/justdial', createJustdialRouter(prisma));
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
