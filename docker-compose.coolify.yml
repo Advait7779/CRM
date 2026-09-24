@@ -21,6 +21,7 @@ x-app-environment: &app-environment
   UPLOAD_DIR: /app/uploads
   UPLOAD_MAX_TOTAL_BYTES: ${UPLOAD_MAX_TOTAL_BYTES:-2147483648}
   ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-true}
+  JUSTDIAL_WEBHOOK_TOKEN: ${JUSTDIAL_WEBHOOK_TOKEN:-}
 
 services:
   migrate:

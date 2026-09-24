@@ -4,11 +4,11 @@ The CRM accepts Justdial's GET, form POST, and JSON POST formats from the suppli
 
 ## Configuration
 
-1. Set `JUSTDIAL_WEBHOOK_TOKEN` in the server's deployment environment to a random secret of at least 32 characters. Do not commit the token to Git.
+1. Set `JUSTDIAL_WEBHOOK_TOKEN` in the API server's Coolify environment to a random secret of at least 32 characters. Do not commit the token to Git. The frontend and API use separate domains in this deployment.
 2. Deploy the application. The normal server startup applies the versioned Prisma migration before the server begins accepting requests.
 3. Give Justdial this callback URL, replacing `<token>` with the configured value:
 
-   `https://crm.advaitdigital.co.in/api/integrations/justdial/<token>`
+   `https://api-crm.advaitdigital.co.in/api/integrations/justdial/<token>`
 
 4. Ask Justdial to use POST JSON if available. They may use GET or form POST with the documented field names. No extra query parameter is needed.
 5. Both Justdial centres use `ternadomain@gmail.com` as their lead feedback email, per the account owner.
