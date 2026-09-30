@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, X, LogOut, CheckCircle2, FileText, Printer, Eye } from 'lucide-react'
+import { Plus, X, LogOut, CheckCircle2, FileText, Printer, Eye, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { localDateString } from '../../utils/date'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiGetAll, apiGet, apiPost, apiPut } from '../../utils/api'
+import { apiGetAll, apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
+import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
 const emptyForm = { name: '', dept: 'Sales', role: '', phone: '', email: '', basicSalary: 20000, incentive: 0, deduction: 0 }
 const today = localDateString()
@@ -16,6 +17,8 @@ export default function EmployeesPage() {
   const [payroll, setPayroll] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
   const [payslipRow, setPayslipRow] = useState(null)
+  const [confirmDeleteEmployee, setConfirmDeleteEmployee] = useState(null)
+  const [deletingEmployee, setDeletingEmployee] = useState(false)
   const [form, setForm] = useState(emptyForm)
 
   const load = useCallback(async () => {
@@ -43,6 +46,21 @@ export default function EmployeesPage() {
       setForm(emptyForm)
       toast.success('Employee created')
     } catch (error) { toast.error(error.message) }
+  }
+
+  const deleteEmployee = async () => {
+    if (!confirmDeleteEmployee || deletingEmployee) return
+    const employeeId = confirmDeleteEmployee.id
+    setDeletingEmployee(true)
+    try {
+      await apiDelete(`/employees/${employeeId}`)
+      setEmployees(current => current.filter(employee => employee.id !== employeeId))
+      setAttendance(current => current.filter(row => row.employeeId !== employeeId))
+      setPayroll(current => current.filter(row => row.employeeId !== employeeId))
+      setConfirmDeleteEmployee(null)
+      toast.success('Employee deleted')
+    } catch (error) { toast.error(error.message) }
+    finally { setDeletingEmployee(false) }
   }
 
   const updateAttendance = async (employee, status, checkout = false) => {
@@ -90,6 +108,15 @@ export default function EmployeesPage() {
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#6366f1', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 800 }}>{employee.name.charAt(0)}</div>
                 <div><h3>{employee.name}</h3><p style={{ color: '#6366f1', fontSize: 12 }}>{employee.dept} · {employee.role || 'Team member'}</p></div>
+                <button
+                  type="button"
+                  title={`Delete ${employee.name}`}
+                  aria-label={`Delete ${employee.name}`}
+                  onClick={() => setConfirmDeleteEmployee(employee)}
+                  style={{ marginLeft: 'auto', width: 32, height: 32, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer', flexShrink: 0 }}
+                >
+                  <Trash2 size={15} style={{ color: '#ef4444' }} />
+                </button>
               </div>
               <div style={{ marginTop: 14, color: 'var(--text-secondary)', fontSize: 13 }}>{employee.phone}<br />{employee.email || 'No email'}</div>
             </div>
@@ -270,6 +297,17 @@ export default function EmployeesPage() {
           </div>
         )
       })()}
+
+      <ConfirmDeleteModal
+        isOpen={Boolean(confirmDeleteEmployee)}
+        onClose={() => { if (!deletingEmployee) setConfirmDeleteEmployee(null) }}
+        onConfirm={deleteEmployee}
+        loading={deletingEmployee}
+        title="Delete Employee"
+        subtitle={confirmDeleteEmployee?.name}
+        message="This permanently deletes the employee directory record and linked attendance, payroll, leave, document, and field visit records. It does not delete a System User account."
+        confirmText="Delete Employee"
+      />
     </div>
   )
 }
