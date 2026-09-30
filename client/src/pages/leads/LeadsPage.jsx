@@ -24,6 +24,35 @@ const STATUS_COLOR = {
   'Quotation Sent': '#fb923c', 'Negotiation': '#f97316', 'Won': '#10b981', 'Lost': '#ef4444', 'Converted': '#10b981'
 }
 
+const leadDateFormatter = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+const leadTimeFormatter = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' })
+
+function getLeadDate(lead) {
+  const rawDate = lead.source === 'Justdial' ? lead.justdialPayload?.date : null
+  const enquiryDate = typeof rawDate === 'string' ? rawDate.trim() : ''
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(enquiryDate)
+  if (match) {
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+    if (date.toISOString().slice(0, 10) === enquiryDate) {
+      const rawTime = lead.justdialPayload?.time
+      const enquiryTime = typeof rawTime === 'string' ? rawTime.trim() : ''
+      return {
+        date: leadDateFormatter.format(date),
+        time: /^\d{2}:\d{2}/.test(enquiryTime) ? enquiryTime.slice(0, 5) : '',
+        title: 'Justdial enquiry date'
+      }
+    }
+  }
+
+  const createdAt = lead.createdAt ? new Date(lead.createdAt) : null
+  if (!createdAt || Number.isNaN(createdAt.getTime())) return { date: '—', time: '', title: 'Lead date unavailable' }
+  return {
+    date: leadDateFormatter.format(createdAt),
+    time: leadTimeFormatter.format(createdAt),
+    title: lead.source === 'Justdial' ? 'Date received by CRM' : 'Date added to CRM'
+  }
+}
+
 const EMPTY_FORM = {
   name: '', phone: '', email: '', company: '', source: 'Website',
   service: 'GPS Tracking', status: 'New', exec: '', followUp: '', notes: ''
@@ -233,15 +262,16 @@ export default function LeadsPage() {
 
       {/* List View */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ minWidth: 850 }}>
+        <table className="data-table" style={{ minWidth: 980 }}>
           <thead>
             <tr>
-              <th>Name</th><th>Phone</th><th>Service</th><th>Source</th><th>Status</th><th>Executive</th><th>Follow-up</th><th>Action</th>
+              <th>Name</th><th>Phone</th><th>Service</th><th>Source</th><th title="Justdial enquiry date, or date added to CRM for other leads">Lead Date</th><th>Status</th><th>Executive</th><th>Follow-up</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map(l => {
               const SrcIcon = SOURCE_ICON[l.source] || Globe
+              const leadDate = getLeadDate(l)
               return (
                 <tr key={l.id}>
                   <td>
@@ -259,6 +289,10 @@ export default function LeadsPage() {
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: SOURCE_COLOR[l.source] }}>
                       <SrcIcon size={12} /> {l.source}
                     </span>
+                  </td>
+                  <td title={leadDate.title} style={{ whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{leadDate.date}</div>
+                    {leadDate.time && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>{leadDate.time}</div>}
                   </td>
                   <td>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: `${STATUS_COLOR[l.status]}20`, color: STATUS_COLOR[l.status] }}>
