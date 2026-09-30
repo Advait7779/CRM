@@ -35,7 +35,7 @@ export default function ProfilePage() {
   const changePassword = async event => {
     event.preventDefault()
     if (password.newPassword !== password.confirmPassword) return toast.error('New passwords do not match')
-    if (password.newPassword.length < 12) return toast.error('Password must be at least 12 characters')
+    if (password.newPassword.length < 6) return toast.error('Password must be at least 6 characters')
     try {
       const result = await apiPut('/auth/password', { currentPassword: password.currentPassword, newPassword: password.newPassword })
       updateUser({ token: result.token })
@@ -74,7 +74,7 @@ export default function ProfilePage() {
             <h3 style={{ marginBottom: 16 }}>Change Password</h3>
             <div className="form-grid-3">
               <div className="form-group"><label className="form-label">Current Password</label><input className="input-field" type="password" value={password.currentPassword} onChange={e => setPassword(current => ({ ...current, currentPassword: e.target.value }))} required /></div>
-              <div className="form-group"><label className="form-label">New Password</label><input className="input-field" type="password" minLength={12} value={password.newPassword} onChange={e => setPassword(current => ({ ...current, newPassword: e.target.value }))} required /></div>
+              <div className="form-group"><label className="form-label">New Password</label><input className="input-field" type="password" minLength={6} value={password.newPassword} onChange={e => setPassword(current => ({ ...current, newPassword: e.target.value }))} required /></div>
               <div className="form-group"><label className="form-label">Confirm Password</label><input className="input-field" type="password" value={password.confirmPassword} onChange={e => setPassword(current => ({ ...current, confirmPassword: e.target.value }))} required /></div>
             </div>
             <button className="btn-primary" style={{ marginTop: 18 }}><Lock size={15} /> Update Password</button>

@@ -441,7 +441,7 @@ router.put('/auth/profile', authMiddleware, asyncHandler(async (req, res) => {
 router.put('/auth/password', authMiddleware, asyncHandler(async (req, res) => {
   const currentPassword = String(req.body.currentPassword || '');
   const newPassword = String(req.body.newPassword || '');
-  if (newPassword.length < 12) return res.status(400).json({ message: 'New password must be at least 12 characters.' });
+  if (newPassword.length < 6) return res.status(400).json({ message: 'New password must be at least 6 characters.' });
   const user = await prisma.users.findUnique({ where: { id: req.user.id } });
   if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
     return res.status(400).json({ message: 'Current password is incorrect.' });
@@ -491,7 +491,7 @@ router.post('/users', authMiddleware, checkRole(ADMIN), asyncHandler(async (req,
     payload.justdialProducts = req.body.justdialProducts;
   }
   requireFields(payload, ['name', 'email', 'role', 'password']);
-  if (payload.password.length < 12) return res.status(400).json({ message: 'Password must be at least 12 characters.' });
+  if (payload.password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
   if (!ASSIGNABLE_USER_ROLES.includes(payload.role)) return res.status(400).json({ message: 'Invalid or protected user role.' });
   payload.email = payload.email.toLowerCase();
   payload.password = await bcrypt.hash(payload.password, 12);
@@ -548,7 +548,7 @@ router.delete('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async
 
 router.put('/users/:id/password', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
   const newPassword = String(req.body.newPassword || '');
-  if (newPassword.length < 12) return res.status(400).json({ message: 'Password must be at least 12 characters.' });
+  if (newPassword.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
   const user = await prisma.users.findUnique({ where: { id: Number(req.params.id) } });
   if (!user) return res.status(404).json({ message: 'User not found.' });
   if (user.role === 'super_admin') {

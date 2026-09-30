@@ -56,7 +56,7 @@ export default function UsersPage() {
 
   const createUser = async event => {
     event.preventDefault()
-    if (form.password.length < 12) return toast.error('Initial password must be at least 12 characters')
+    if (form.password.length < 6) return toast.error('Initial password must be at least 6 characters')
     if (LEAD_ROLES.includes(form.role) && productOptions.length === 0) return toast.error('Restart the local backend before assigning Justdial products')
     try {
       const created = await apiPost('/users', form)
@@ -103,8 +103,8 @@ export default function UsersPage() {
 
   const handleConfirmResetPassword = async event => {
     event.preventDefault()
-    if (!resetPasswordInput || resetPasswordInput.length < 12) {
-      return toast.error('Password must be at least 12 characters')
+    if (!resetPasswordInput || resetPasswordInput.length < 6) {
+      return toast.error('Password must be at least 6 characters')
     }
     try {
       await apiPut(`/users/${resetModalUser.id}/password`, { newPassword: resetPasswordInput })
@@ -243,7 +243,7 @@ export default function UsersPage() {
                 <div className="form-group"><label className="form-label">Email</label><input className="input-field" type="email" value={form.email} onChange={e => setForm(current => ({ ...current, email: e.target.value }))} required /></div>
                 <div className="form-group"><label className="form-label">Phone</label><input className="input-field" value={form.phone} onChange={e => setForm(current => ({ ...current, phone: e.target.value }))} /></div>
                 <div className="form-group"><label className="form-label">Role</label><ThemeSelect value={form.role} onChange={e => setForm(current => ({ ...current, role: e.target.value }))}>{ROLES.map(role => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}</ThemeSelect></div>
-                <div className="form-group"><label className="form-label">Initial Password</label><input className="input-field" type="password" minLength={12} value={form.password} onChange={e => setForm(current => ({ ...current, password: e.target.value }))} required /></div>
+                <div className="form-group"><label className="form-label">Initial Password</label><input className="input-field" type="password" minLength={6} value={form.password} onChange={e => setForm(current => ({ ...current, password: e.target.value }))} required /></div>
               </div>
               <ProductAccessPicker role={form.role} selected={form.justdialProducts} options={productOptions} onChange={justdialProducts => setForm(current => ({ ...current, justdialProducts }))} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn-primary">Create User</button></div>
@@ -260,7 +260,7 @@ export default function UsersPage() {
             </div>
             <form onSubmit={handleConfirmResetPassword}>
               <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Set a new password for <strong style={{ color: 'var(--text-primary)' }}>{resetModalUser.name}</strong> (minimum 12 characters):
+                Set a new password for <strong style={{ color: 'var(--text-primary)' }}>{resetModalUser.name}</strong> (minimum 6 characters):
               </p>
               <div className="form-group" style={{ marginBottom: 20 }}>
                 <label className="form-label">New Password</label>
@@ -268,12 +268,12 @@ export default function UsersPage() {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
-                    minLength={12}
+                    minLength={6}
                     className="input-field"
                     style={{ paddingRight: 40 }}
                     value={resetPasswordInput}
                     onChange={e => setResetPasswordInput(e.target.value)}
-                    placeholder="Enter new strong password..."
+                    placeholder="Enter new password..."
                     autoFocus
                   />
                   <button
