@@ -11,13 +11,36 @@ const ROLES = [
   'website_developer', 'digital_marketing', 'support_executive'
 ]
 
-const emptyForm = { name: '', email: '', phone: '', role: 'support_executive', password: '' }
+const emptyForm = { name: '', email: '', phone: '', role: 'support_executive', password: '', justdialProducts: [] }
+const LEAD_ROLES = ['sales_manager', 'sales_executive']
+
+function ProductAccessPicker({ role, selected, options, onChange }) {
+  if (!LEAD_ROLES.includes(role)) {
+    return <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '6px 0 0' }}>{role === 'director' ? 'Directors can see every Justdial product.' : 'Choose Sales Manager or Sales Executive to give access to Justdial leads.'}</p>
+  }
+  return (
+    <div className="form-group" style={{ marginTop: 16 }}>
+      <label className="form-label">Justdial enquiry products</label>
+      {options.length === 0 && <p style={{ fontSize: 12, color: '#b45309', margin: '0 0 10px' }}>Product options are unavailable. Restart the local backend and refresh this page.</p>}
+      <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 10px' }}>Select the products this user can see. No selection means no Justdial enquiries.</p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {options.map(product => (
+          <label key={product} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={selected.includes(product)} onChange={() => onChange(selected.includes(product) ? selected.filter(value => value !== product) : [...selected, product])} />
+            {product}
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editModalUser, setEditModalUser] = useState(null)
-  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', role: 'support_executive' })
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', role: 'support_executive', justdialProducts: [] })
+  const [productOptions, setProductOptions] = useState([])
   const [resetModalUser, setResetModalUser] = useState(null)
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [resetPasswordInput, setResetPasswordInput] = useState('')
@@ -26,11 +49,15 @@ export default function UsersPage() {
 
   useEffect(() => {
     apiGet('/users').then(setUsers).catch(error => toast.error(error.message))
+    apiGet('/justdial/products')
+      .then(products => setProductOptions(products.assignable || []))
+      .catch(() => toast.error('Justdial product settings are unavailable. Restart the local backend.'))
   }, [])
 
   const createUser = async event => {
     event.preventDefault()
     if (form.password.length < 12) return toast.error('Initial password must be at least 12 characters')
+    if (LEAD_ROLES.includes(form.role) && productOptions.length === 0) return toast.error('Restart the local backend before assigning Justdial products')
     try {
       const created = await apiPost('/users', form)
       setUsers(current => [...current, created])
@@ -46,7 +73,7 @@ export default function UsersPage() {
     }
     try {
       const updated = await apiPut(`/users/${user.id}`, { role })
-      setUsers(current => current.map(item => item.id === user.id ? updated : item))
+      setUsers(current => current.map(item => item.id === user.id ? { ...item, ...updated } : item))
       toast.success('User role updated')
     } catch (error) { toast.error(error.message) }
   }
@@ -95,13 +122,15 @@ export default function UsersPage() {
       name: user.name || '',
       email: user.email || '',
       phone: user.phone || '',
-      role: user.role || 'support_executive'
+      role: user.role || 'support_executive',
+      justdialProducts: user.justdialProducts || []
     })
   }
 
   const handleSaveEdit = async event => {
     event.preventDefault()
     if (!editModalUser) return
+    if (LEAD_ROLES.includes(editForm.role) && productOptions.length === 0) return toast.error('Restart the local backend before assigning Justdial products')
     try {
       const updated = await apiPut(`/users/${editModalUser.id}`, editForm)
       setUsers(current => current.map(item => item.id === editModalUser.id ? { ...item, ...updated } : item))
@@ -139,6 +168,9 @@ export default function UsersPage() {
                         {ROLES.map(role => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}
                       </ThemeSelect>
                     )}
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 5 }}>
+                      {isSuperAdmin || user.role === 'director' ? 'Justdial: All products' : LEAD_ROLES.includes(user.role) ? `Justdial: ${user.justdialProducts?.join(', ') || 'None assigned'}` : 'Justdial: No lead access'}
+                    </div>
                   </td>
                   <td>{new Date(user.createdAt).toLocaleDateString('en-IN')}</td>
                   <td>
@@ -213,6 +245,7 @@ export default function UsersPage() {
                 <div className="form-group"><label className="form-label">Role</label><ThemeSelect value={form.role} onChange={e => setForm(current => ({ ...current, role: e.target.value }))}>{ROLES.map(role => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}</ThemeSelect></div>
                 <div className="form-group"><label className="form-label">Initial Password</label><input className="input-field" type="password" minLength={12} value={form.password} onChange={e => setForm(current => ({ ...current, password: e.target.value }))} required /></div>
               </div>
+              <ProductAccessPicker role={form.role} selected={form.justdialProducts} options={productOptions} onChange={justdialProducts => setForm(current => ({ ...current, justdialProducts }))} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn-primary">Create User</button></div>
             </form>
           </div>
@@ -321,6 +354,7 @@ export default function UsersPage() {
                   )}
                 </div>
               </div>
+              {editModalUser.role !== 'super_admin' && <ProductAccessPicker role={editForm.role} selected={editForm.justdialProducts} options={productOptions} onChange={justdialProducts => setEditForm(current => ({ ...current, justdialProducts }))} />}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
                 <button type="button" className="btn-secondary" onClick={() => setEditModalUser(null)}>
                   Cancel

@@ -13,7 +13,7 @@ const authMiddleware = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await prisma.users.findUnique({
       where: { id: Number(decoded.id) },
-      select: { id: true, name: true, email: true, role: true, tokenVersion: true }
+      select: { id: true, name: true, email: true, role: true, tokenVersion: true, justdialProducts: true }
     });
     if (!user || Number(decoded.tokenVersion || 0) !== Number(user.tokenVersion || 0)) {
       return res.status(401).json({ message: 'Session has been revoked.' });
@@ -23,7 +23,8 @@ const authMiddleware = async (req, res, next) => {
       name: user.name,
       email: user.email,
       role: user.role,
-      tokenVersion: user.tokenVersion
+      tokenVersion: user.tokenVersion,
+      justdialProducts: user.justdialProducts
     };
     return next();
   } catch {

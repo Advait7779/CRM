@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
+import { apiGet, apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
+import { useAuth } from '../../context/AuthContext'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, Pencil, Trash2, UserCheck, FilePlus } from 'lucide-react'
@@ -30,7 +31,7 @@ const EMPTY_FORM = {
 
 
 
-function LeadModal({ lead, onClose, onSave, isNew }) {
+function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions }) {
   const [form, setForm] = useState(lead ? { ...lead } : { ...EMPTY_FORM })
 
   const handleSubmit = (e) => {
@@ -67,17 +68,26 @@ function LeadModal({ lead, onClose, onSave, isNew }) {
             </div>
             <div className="form-group">
               <label className="form-label">Lead Source</label>
-              <ThemeSelect className="input-field" value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))}>
+              <ThemeSelect className="input-field" value={form.source} disabled={lead?.source === 'Justdial' && !isAdmin} onChange={e => setForm(f => ({ ...f, source: e.target.value }))}>
                 {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
               </ThemeSelect>
             </div>
             <div className="form-group">
               <label className="form-label">Service Interest</label>
-              <ThemeSelect className="input-field" value={form.service} onChange={e => setForm(f => ({ ...f, service: e.target.value }))}>
+              <ThemeSelect className="input-field" value={form.service} disabled={lead?.source === 'Justdial' && !isAdmin} onChange={e => setForm(f => ({ ...f, service: e.target.value }))}>
                 {form.service && !SERVICES.includes(form.service) && <option value={form.service}>{form.service}</option>}
                 {SERVICES.map(s => <option key={s}>{s}</option>)}
               </ThemeSelect>
             </div>
+            {lead?.source === 'Justdial' && isAdmin && (
+              <div className="form-group">
+                <label className="form-label">Justdial Product Group</label>
+                <ThemeSelect className="input-field" value={form.justdialProduct || 'Unclassified'} onChange={e => setForm(f => ({ ...f, justdialProduct: e.target.value }))}>
+                  <option value="Unclassified">Unclassified (admin review)</option>
+                  {productOptions.map(product => <option key={product} value={product}>{product}</option>)}
+                </ThemeSelect>
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">Lead Status</label>
               <ThemeSelect className="input-field" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
@@ -119,10 +129,14 @@ function LeadModal({ lead, onClose, onSave, isNew }) {
 }
 
 export default function LeadsPage() {
+  const { user } = useAuth()
+  const isAdmin = ['super_admin', 'director'].includes(user?.role)
+  const [productOptions, setProductOptions] = useState([])
   const [leads, setLeads]         = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [filterSource, setFilter] = useState('All')
+  const [reviewOnly, setReviewOnly] = useState(false)
   const [modal, setModal]         = useState(null) // null | { lead, isNew }
   const [confirmDeleteLead, setConfirmDeleteLead] = useState(null)
 
@@ -133,10 +147,14 @@ export default function LeadsPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (isAdmin) apiGet('/justdial/products').then(data => setProductOptions(data.assignable)).catch(() => {})
+  }, [isAdmin])
+
   const filtered = leads.filter(l => {
     const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || (l.company || '').toLowerCase().includes(search.toLowerCase())
     const matchSrc    = filterSource === 'All' || l.source === filterSource
-    return matchSearch && matchSrc
+    return matchSearch && matchSrc && (!reviewOnly || (l.source === 'Justdial' && (!l.justdialProduct || l.justdialProduct === 'Unclassified')))
   })
 
   const handleSave = async (form, id) => {
@@ -209,6 +227,7 @@ export default function LeadsPage() {
               fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
             }}>{src}</button>
           ))}
+          {isAdmin && <button type="button" onClick={() => setReviewOnly(value => !value)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #f59e0b', background: reviewOnly ? 'rgba(245,158,11,0.16)' : 'transparent', color: '#b45309', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Needs Review ({leads.filter(l => l.source === 'Justdial' && (!l.justdialProduct || l.justdialProduct === 'Unclassified')).length})</button>}
         </div>
       </div>
 
@@ -235,7 +254,7 @@ export default function LeadsPage() {
                     </div>
                   </td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{l.phone}</td>
-                  <td><span style={{ fontSize: 12, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '3px 8px', borderRadius: 6 }}>{l.service}</span></td>
+                  <td><span style={{ fontSize: 12, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '3px 8px', borderRadius: 6 }}>{l.service}</span>{l.source === 'Justdial' && <div style={{ fontSize: 11, color: l.justdialProduct === 'Unclassified' ? '#b45309' : 'var(--text-secondary)', marginTop: 6 }}>{l.justdialProduct || 'Unclassified'}</div>}</td>
                   <td>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: SOURCE_COLOR[l.source] }}>
                       <SrcIcon size={12} /> {l.source}
@@ -314,6 +333,8 @@ export default function LeadsPage() {
 
       {modal && (
         <LeadModal
+          isAdmin={isAdmin}
+          productOptions={productOptions}
           lead={modal.lead}
           isNew={modal.isNew}
           onClose={() => setModal(null)}

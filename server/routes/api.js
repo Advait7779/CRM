@@ -10,7 +10,9 @@ const { prisma, Prisma } = require('../config/prisma');
 const { currentDateOnly, prepareData, prismaId, toDateOnly } = require('../utils/prismaData');
 const { authMiddleware, checkRole } = require('../middleware/auth');
 const { sendMultiChannelNotification } = require('../services/notificationService');
+const { ALL_WEBHOOK_SETTING_KEYS, sendSavedWebhookNotifications } = require('../services/savedWebhookNotifications');
 const { isGroupMember, groupAccessWhere } = require('../utils/accessPolicy');
+const { JUSTDIAL_PRODUCTS, ASSIGNABLE_PRODUCTS, classifyJustdialCategory, validProductSelection, leadAccessWhere, canAccessLead } = require('../services/justdialProducts');
 
 const router = express.Router();
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -38,6 +40,7 @@ const PUBLIC_USER_SELECT = {
   phone: true,
   role: true,
   tokenVersion: true,
+  justdialProducts: true,
   createdAt: true,
   updatedAt: true
 };
@@ -117,7 +120,7 @@ async function removeUndeployedFields(model, payload) {
 const RESOURCE_CONFIG = {
   leads: {
     model: 'leads',
-    fields: ['name', 'phone', 'email', 'company', 'source', 'service', 'status', 'exec', 'followUp', 'notes'],
+    fields: ['name', 'phone', 'email', 'company', 'source', 'service', 'status', 'exec', 'followUp', 'notes', 'justdialProduct'],
     required: ['name', 'phone', 'service'],
     roles: SALES,
     readRoles: SALES
@@ -463,6 +466,10 @@ router.get('/users', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, 
   res.json(await prisma.users.findMany({ select: PUBLIC_USER_SELECT, orderBy: { name: 'asc' } }));
 }));
 
+router.get('/justdial/products', authMiddleware, checkRole(ADMIN), (req, res) => {
+  res.json({ assignable: ASSIGNABLE_PRODUCTS, unclassified: JUSTDIAL_PRODUCTS.UNCLASSIFIED });
+});
+
 router.get('/task-assignees', authMiddleware, checkRole(MANAGEMENT), asyncHandler(async (req, res) => {
   res.json(await prisma.users.findMany({
     where: { role: { in: ASSIGNABLE_USER_ROLES } },
@@ -479,14 +486,18 @@ router.get('/installation-staff', authMiddleware, checkRole(OPERATIONS), asyncHa
 
 router.post('/users', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
   const payload = cleanBody(req.body, ['name', 'email', 'phone', 'role', 'password']);
+  if (req.body.justdialProducts !== undefined) {
+    if (!validProductSelection(req.body.justdialProducts)) return res.status(400).json({ message: 'Invalid Justdial products.' });
+    payload.justdialProducts = req.body.justdialProducts;
+  }
   requireFields(payload, ['name', 'email', 'role', 'password']);
   if (payload.password.length < 12) return res.status(400).json({ message: 'Password must be at least 12 characters.' });
   if (!ASSIGNABLE_USER_ROLES.includes(payload.role)) return res.status(400).json({ message: 'Invalid or protected user role.' });
   payload.email = payload.email.toLowerCase();
   payload.password = await bcrypt.hash(payload.password, 12);
-  const user = await prisma.users.create({ data: prepareData('users', payload, { create: true }) });
+  const user = await prisma.users.create({ data: prepareData('users', payload, { create: true }), select: PUBLIC_USER_SELECT });
   await audit(req, 'create', 'user', user.id, { role: user.role });
-  res.status(201).json({ id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role });
+  res.status(201).json(user);
 }));
 
 router.put('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
@@ -498,6 +509,10 @@ router.put('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async (r
     }
   }
   const payload = cleanBody(req.body, ['name', 'email', 'phone', 'role']);
+  if (req.body.justdialProducts !== undefined) {
+    if (!validProductSelection(req.body.justdialProducts)) return res.status(400).json({ message: 'Invalid Justdial products.' });
+    payload.justdialProducts = req.body.justdialProducts;
+  }
   if (payload.email) {
     payload.email = payload.email.toLowerCase().trim();
     const existing = await prisma.users.findUnique({ where: { email: payload.email } });
@@ -513,10 +528,11 @@ router.put('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async (r
   }
   const updatedUser = await prisma.users.update({
     where: { id: user.id },
-    data: prepareData('users', payload)
+    data: prepareData('users', payload),
+    select: PUBLIC_USER_SELECT
   });
   await audit(req, 'update', 'user', user.id, { role: updatedUser.role });
-  res.json({ id: updatedUser.id, name: updatedUser.name, email: updatedUser.email, phone: updatedUser.phone, role: updatedUser.role });
+  res.json(updatedUser);
 }));
 
 router.delete('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
@@ -553,6 +569,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
   router.get(`/${routeName}`, authMiddleware, checkRole(config.readRoles), asyncHandler(async (req, res) => {
     const where = {};
     if (routeName === 'tasks' && !MANAGEMENT.includes(req.user.role)) where.assignedUserId = req.user.id;
+    if (routeName === 'leads') Object.assign(where, leadAccessWhere(req.user));
     if (req.query.customer && config.fields.includes('customer')) where.customer = req.query.customer;
     if (req.query.status) where.status = prepareData(config.model, { status: req.query.status }).status;
     const orderField = routeName === 'employees' ? 'name' : 'createdAt';
@@ -573,6 +590,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
       ...(await compatibilitySelect(config.model))
     });
     if (!record) return res.status(404).json({ message: `${routeName.slice(0, -1)} not found.` });
+    if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     if (routeName === 'tasks' && !MANAGEMENT.includes(req.user.role) && record.assignedUserId !== req.user.id) {
       return res.status(404).json({ message: 'Task not found.' });
     }
@@ -582,6 +600,14 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
 
   router.post(`/${routeName}`, authMiddleware, checkRole(config.roles), asyncHandler(async (req, res) => {
     const payload = cleanBody(req.body, config.fields);
+    if (routeName === 'leads') {
+      if (payload.source === 'Justdial') {
+        payload.justdialProduct = classifyJustdialCategory(payload.service);
+        if (!canAccessLead(req.user, payload)) return res.status(403).json({ message: 'This Justdial product is not assigned to you.' });
+      } else {
+        delete payload.justdialProduct;
+      }
+    }
     if (!payload.id && (routeName === 'quotations' || routeName === 'invoices')) {
       const prefix = routeName === 'quotations' ? 'QT' : 'INV';
       payload.id = `${prefix}-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
@@ -651,27 +677,8 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     });
     await audit(req, 'create', routeName, record.id);
     if (routeName === 'customers' && record.phone) {
-      // Send SMS & WhatsApp welcome messages via saved webhook URLs
-      setImmediate(async () => {
-        try {
-          const rows = await prisma.appSettings.findMany({ where: { key: { in: ['sms_webhook_url', 'whatsapp_webhook_url'] } } });
-          const settingsMap = Object.fromEntries(rows.map((r) => [r.key, r.value || '']));
-          const customerPhone = record.phone.replace(/[^0-9]/g, '');
-          for (const [channel, urlTemplate] of Object.entries(settingsMap)) {
-            if (!urlTemplate) continue;
-            try {
-              // Replace the demo number (9876543210) with the actual customer number
-              const finalUrl = urlTemplate.replace(/number=\d{10,}/, `number=${customerPhone}`);
-              const response = await fetch(finalUrl, { method: 'GET', signal: AbortSignal.timeout(15000) });
-              console.log(`[Webhook] ${channel} sent to ${customerPhone}: HTTP ${response.status}`);
-            } catch (channelError) {
-              console.error(`[Webhook] ${channel} failed for ${customerPhone}:`, channelError.message);
-            }
-          }
-        } catch (settingsError) {
-          console.error('[Webhook] Failed to load settings:', settingsError.message);
-        }
-      });
+      setImmediate(() => sendSavedWebhookNotifications(prisma, record.phone)
+        .catch(error => console.error('[Webhook] Failed to load settings:', error.message)));
     }
     if (routeName === 'customers') {
       await broadcastNotification(req, {
@@ -752,7 +759,27 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     const id = prismaId(config.model, req.params.id);
     const record = await delegate.findUnique({ where: { id }, ...(await compatibilitySelect(config.model)) });
     if (!record) return res.status(404).json({ message: `${routeName.slice(0, -1)} not found.` });
+    if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     const payload = cleanBody(req.body, config.fields.filter((field) => field !== 'id'));
+    if (routeName === 'leads') {
+      const nextSource = payload.source ?? record.source;
+      if (record.source === 'Justdial' && !ADMIN.includes(req.user.role)) {
+        delete payload.source;
+        delete payload.service;
+        delete payload.justdialProduct;
+      } else if (nextSource === 'Justdial') {
+        if (payload.justdialProduct !== undefined) {
+          if (!Object.values(JUSTDIAL_PRODUCTS).includes(payload.justdialProduct)) return res.status(400).json({ message: 'Invalid Justdial product.' });
+        } else if (payload.service !== undefined || record.source !== 'Justdial') {
+          payload.justdialProduct = classifyJustdialCategory(payload.service ?? record.service);
+        }
+      } else {
+        payload.justdialProduct = null;
+      }
+      if (!canAccessLead(req.user, { ...record, ...payload, source: record.source === 'Justdial' && !ADMIN.includes(req.user.role) ? 'Justdial' : nextSource })) {
+        return res.status(403).json({ message: 'This Justdial product is not assigned to you.' });
+      }
+    }
     await applyStableReferences(payload, config.model);
     if (routeName === 'invoices' && ['amount', 'gst', 'total'].some((field) => payload[field] !== undefined)) {
       const amount = validMoney(payload.amount ?? record.amount, 'Invoice amount');
@@ -894,6 +921,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     const id = prismaId(config.model, req.params.id);
     const record = await delegate.findUnique({ where: { id }, ...(await compatibilitySelect(config.model)) });
     if (!record) return res.status(404).json({ message: `${routeName.slice(0, -1)} not found.` });
+    if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     if (routeName === 'customers') {
       const relatedCount = await Promise.all([
         prisma.invoices.count({ where: { customer: record.name } }),
@@ -920,6 +948,11 @@ router.post('/leads/:id/convert', authMiddleware, checkRole(SALES), asyncHandler
   const result = await serializableTransaction(async (tx) => {
     const lead = await tx.leads.findUnique({ where: { id: Number(req.params.id) } });
     if (!lead) {
+      const error = new Error('Lead not found.');
+      error.status = 404;
+      throw error;
+    }
+    if (!canAccessLead(req.user, lead)) {
       const error = new Error('Lead not found.');
       error.status = 404;
       throw error;
@@ -1773,11 +1806,27 @@ router.post('/quotations/:id/send', authMiddleware, checkRole(SALES), asyncHandl
 }));
 
 router.get('/notifications', authMiddleware, asyncHandler(async (req, res) => {
-  res.json(await prisma.notifications.findMany({
+  const notifications = await prisma.notifications.findMany({
     where: { userId: req.user.id },
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: NOTIFICATION_SELECT
+  });
+  if (ADMIN.includes(req.user.role)) return res.json(notifications);
+  const justdialIds = notifications
+    .filter(item => item.title === 'New Justdial enquiry')
+    .map(item => /^justdial:(\d+):\d+$/.exec(item.dedupeKey || ''))
+    .filter(Boolean)
+    .map(match => Number(match[1]));
+  const visible = justdialIds.length ? await prisma.leads.findMany({
+    where: { AND: [leadAccessWhere(req.user), { id: { in: justdialIds } }] },
+    select: { id: true }
+  }) : [];
+  const visibleIds = new Set(visible.map(lead => lead.id));
+  res.json(notifications.filter(item => {
+    if (item.title !== 'New Justdial enquiry') return true;
+    const match = /^justdial:(\d+):\d+$/.exec(item.dedupeKey || '');
+    return match && visibleIds.has(Number(match[1]));
   }));
 }));
 
@@ -1792,9 +1841,16 @@ router.put('/notifications/read-all', authMiddleware, asyncHandler(async (req, r
 router.put('/notifications/:id/read', authMiddleware, asyncHandler(async (req, res) => {
   const notification = await prisma.notifications.findFirst({
     where: { id: Number(req.params.id), userId: req.user.id },
-    select: { id: true }
+    select: { id: true, title: true, dedupeKey: true }
   });
   if (!notification) return res.status(404).json({ message: 'Notification not found.' });
+  if (!ADMIN.includes(req.user.role) && notification.title === 'New Justdial enquiry') {
+    const match = /^justdial:(\d+):\d+$/.exec(notification.dedupeKey || '');
+    if (!match || !(await prisma.leads.findFirst({
+      where: { AND: [leadAccessWhere(req.user), { id: Number(match[1]) }] },
+      select: { id: true }
+    }))) return res.status(404).json({ message: 'Notification not found.' });
+  }
   const updatedNotification = await prisma.notifications.update({
     where: { id: notification.id },
     data: prepareData('notifications', { read: true }),
@@ -1814,7 +1870,7 @@ router.get('/search', authMiddleware, asyncHandler(async (req, res) => {
   const canFinance = FINANCE.includes(req.user.role);
   const canTickets = [...SUPPORT, ...OPERATIONS].includes(req.user.role);
   const [leads, customers, invoices, tickets] = await Promise.all([
-    canSales ? prisma.leads.findMany({ where: { OR: [{ name: { contains: query, mode: 'insensitive' } }, { company: { contains: query, mode: 'insensitive' } }, { phone: { contains: query, mode: 'insensitive' } }] }, take: 5 }) : [],
+    canSales ? prisma.leads.findMany({ where: { AND: [leadAccessWhere(req.user), { OR: [{ name: { contains: query, mode: 'insensitive' } }, { company: { contains: query, mode: 'insensitive' } }, { phone: { contains: query, mode: 'insensitive' } }] }] }, take: 5 }) : [],
     prisma.customers.findMany({ where: { OR: [{ name: { contains: query, mode: 'insensitive' } }, { contact: { contains: query, mode: 'insensitive' } }, { phone: { contains: query, mode: 'insensitive' } }] }, take: 5 }),
     canFinance ? prisma.invoices.findMany({ where: { OR: [{ id: { contains: query, mode: 'insensitive' } }, { customer: { contains: query, mode: 'insensitive' } }] }, take: 5 }) : [],
     canTickets ? prisma.tickets.findMany({ where: { OR: [{ subject: { contains: query, mode: 'insensitive' } }, { customer: { contains: query, mode: 'insensitive' } }] }, take: 5 }) : []
@@ -1845,11 +1901,11 @@ router.get('/calendar/events', authMiddleware, asyncHandler(async (req, res) => 
   ]);
 }));
 
-async function reportData() {
+async function reportData(user) {
   const [invoices, payments, leads, employees, inventory, renewals] = await Promise.all([
     prisma.invoices.findMany({ orderBy: { date: 'asc' } }),
     prisma.payments.findMany({ orderBy: { date: 'asc' } }),
-    prisma.leads.findMany(),
+    prisma.leads.findMany({ where: leadAccessWhere(user) }),
     prisma.employees.findMany({ orderBy: { name: 'asc' } }),
     prisma.inventories.findMany({ orderBy: { name: 'asc' } }),
     prisma.renewals.findMany({ orderBy: { nextDue: 'asc' } })
@@ -1897,8 +1953,8 @@ router.get('/reports/summary', authMiddleware, checkRole(REPORTING), asyncHandle
       FROM "Invoices" i
       LEFT JOIN (SELECT "invoiceId", SUM("amount") AS paid FROM "Payments" GROUP BY "invoiceId") p ON p."invoiceId" = i."id"
     `,
-    prisma.leads.count(),
-    prisma.leads.count({ where: { status: { in: ['Won', 'Converted'] } } })
+    prisma.leads.count({ where: leadAccessWhere(req.user) }),
+    prisma.leads.count({ where: { AND: [leadAccessWhere(req.user), { status: { in: ['Won', 'Converted'] } }] } })
   ]);
   res.json({
     salesTrend: salesRows.map((item) => ({ month: item.month, sales: Number(item.sales || 0) })),
@@ -1913,7 +1969,7 @@ router.get('/reports/summary', authMiddleware, checkRole(REPORTING), asyncHandle
   });
 }));
 router.get('/reports/:type.csv', authMiddleware, checkRole(REPORTING), asyncHandler(async (req, res) => {
-  const data = await reportData();
+  const data = await reportData(req.user);
   const reports = {
     sales: {
       headers: ['Payment ID', 'Invoice ID', 'Customer', 'Date', 'Amount', 'Method'],
@@ -2367,6 +2423,7 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
   const canFinance = FINANCE.includes(req.user.role);
   const canTickets = [...SUPPORT, ...OPERATIONS].includes(req.user.role);
   const canRenewals = canSales || canFinance;
+  const visibleLeads = leadAccessWhere(req.user);
 
   const [
     totalLeads,
@@ -2386,13 +2443,13 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
     allInstallations,
     allTasks
   ] = await Promise.all([
-    canSales ? prisma.leads.count() : 0,
+    canSales ? prisma.leads.count({ where: visibleLeads }) : 0,
     prisma.customers.count(),
     canTickets ? prisma.tickets.count({ where: { status: { in: ['Open', 'In_Progress'] } } }) : 0,
     canFinance ? prisma.invoices.count({ where: { status: { in: ['Unpaid', 'Overdue', 'Partially_Paid'] } } }) : 0,
     prisma.renewals.count({ where: { nextDue: { gte: now, lte: sevenDaysFromNow } } }),
-    canSales ? prisma.leads.findMany({ orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, name: true, company: true, phone: true, source: true, service: true, status: true } }) : [],
-    canSales ? prisma.leads.groupBy({ by: ['source'], _count: { id: true } }) : [],
+    canSales ? prisma.leads.findMany({ where: visibleLeads, orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, name: true, company: true, phone: true, source: true, service: true, status: true } }) : [],
+    canSales ? prisma.leads.groupBy({ where: visibleLeads, by: ['source'], _count: { id: true } }) : [],
     prisma.customers.findMany({ orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, name: true, contact: true, phone: true, services: true, status: true, createdAt: true } }),
     canFinance ? prisma.$queryRaw`
       SELECT COALESCE(SUM(GREATEST(i."total" - COALESCE(p.paid, 0), 0)), 0)::text AS value
@@ -2523,7 +2580,7 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
 }));
 
 // ─── Settings (Admin-only) ───────────────────────────────────────────────────
-const SETTINGS_KEYS = ['sms_webhook_url', 'whatsapp_webhook_url'];
+const SETTINGS_KEYS = ALL_WEBHOOK_SETTING_KEYS;
 
 router.get('/settings', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
   const rows = await prisma.appSettings.findMany({ where: { key: { in: SETTINGS_KEYS } } });

@@ -230,6 +230,7 @@ model Leads {
   notes               String?
   justdialLeadId      String?          @unique @db.VarChar(255)
   justdialPayload     Json?
+  justdialProduct     String?          @db.VarChar(50)
   convertedCustomerId Int?
   createdAt           DateTime           @db.Timestamptz(6)
   updatedAt           DateTime           @db.Timestamptz(6)
@@ -239,6 +240,7 @@ model Leads {
   @@index([createdAt], map: "leads_created_at")
   @@index([status], map: "leads_status")
   @@index([source], map: "leads_source")
+  @@index([source, justdialProduct], map: "leads_justdial_product")
 }
 
 model Notifications {
@@ -388,6 +390,7 @@ model Users {
   createdAt    DateTime @db.Timestamptz(6)
   updatedAt    DateTime @db.Timestamptz(6)
   tokenVersion Int      @default(0)
+  justdialProducts Json  @default("[]")
   Tasks        Tasks[]
 }
 

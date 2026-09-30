@@ -2,6 +2,8 @@ const crypto = require('node:crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { prepareData } = require('../utils/prismaData');
+const { classifyJustdialCategory, canAccessLead } = require('../services/justdialProducts');
+const { sendJustdialWebhookNotifications } = require('../services/savedWebhookNotifications');
 
 // Field names and limits come from Justdial's API integration document.
 const FIELD_LIMITS = Object.freeze({
@@ -63,6 +65,7 @@ function toLeadData(payload) {
     company: payload.company || null,
     source: 'Justdial',
     service: payload.category || payload.leadtype || 'Unspecified',
+    justdialProduct: classifyJustdialCategory(payload.category || payload.leadtype),
     status: 'New',
     notes,
     justdialLeadId: payload.leadid,
@@ -70,7 +73,7 @@ function toLeadData(payload) {
   }, { create: true });
 }
 
-function createJustdialRouter(prisma, getToken = () => process.env.JUSTDIAL_WEBHOOK_TOKEN) {
+function createJustdialRouter(prisma, getToken = () => process.env.JUSTDIAL_WEBHOOK_TOKEN, sendCustomerNotifications = sendJustdialWebhookNotifications) {
   const router = express.Router();
   const limiter = rateLimit({
     windowMs: 60 * 1000,
@@ -92,7 +95,7 @@ function createJustdialRouter(prisma, getToken = () => process.env.JUSTDIAL_WEBH
       const data = toLeadData(payload);
       let lead;
       try {
-        lead = await prisma.leads.create({ data, select: { id: true, name: true, service: true } });
+        lead = await prisma.leads.create({ data, select: { id: true, name: true, service: true, source: true, justdialProduct: true } });
       } catch (error) {
         if (error.code !== 'P2002') throw error;
         const existing = await prisma.leads.findUnique({
@@ -103,19 +106,23 @@ function createJustdialRouter(prisma, getToken = () => process.env.JUSTDIAL_WEBH
       }
       // Acknowledgement must not depend on the optional staff notification.
       res.status(200).type('text/plain').send('RECEIVED');
+      setImmediate(() => sendCustomerNotifications(prisma, lead, payload)
+        .catch(error => console.error('Justdial customer notification failed:', error.message)));
       try {
         const users = await prisma.users.findMany({
-          where: { role: { in: ['super_admin', 'director', 'sales_manager'] } },
-          select: { id: true }
+          where: { role: { in: ['super_admin', 'director', 'sales_manager', 'sales_executive'] } },
+          select: { id: true, role: true, justdialProducts: true }
         });
-        if (users.length) {
+        const recipients = users.filter(user => canAccessLead(user, lead));
+        if (recipients.length) {
           await prisma.notifications.createMany({
-            data: users.map((user) => prepareData('notifications', {
+            data: recipients.map((user) => prepareData('notifications', {
               userId: user.id,
               type: 'lead',
               title: 'New Justdial enquiry',
               message: `${lead.name}: ${lead.service}`,
-              link: '/leads'
+              link: '/leads',
+              dedupeKey: `justdial:${lead.id}:${user.id}`
             }, { create: true }))
           });
         }
