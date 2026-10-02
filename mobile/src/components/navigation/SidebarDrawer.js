@@ -407,37 +407,18 @@ export default function SidebarDrawer({ navigationRef }) {
               </TouchableOpacity>
             )}
 
-            {/* Collapsible: Finance */}
+            {/* Accounts */}
             {canAccessScreen(role, 'Accounts') && (
-              <View style={styles.accordionContainer}>
-                <TouchableOpacity
-                  style={styles.navItem}
-                  onPress={() => toggleSection('Finance')}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.itemLeft}>
-                    <CreditCard size={19} color="#f59e0b" />
-                    <Text style={styles.itemLabel}>Finance</Text>
-                  </View>
-                  {openSections.Finance ? (
-                    <ChevronDown size={16} color="#64748b" />
-                  ) : (
-                    <ChevronRight size={16} color="#64748b" />
-                  )}
-                </TouchableOpacity>
-                {openSections.Finance && (
-                  <View style={styles.subList}>
-                    <TouchableOpacity
-                      style={styles.subItem}
-                      onPress={() => navigateTo('Accounts')}
-                      activeOpacity={0.7}
-                    >
-                      <CreditCard size={16} color="#fb923c" />
-                      <Text style={styles.subItemLabel}>Accounts</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => navigateTo('Accounts')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemLeft}>
+                  <CreditCard size={19} color="#fb923c" />
+                  <Text style={styles.itemLabel}>Accounts</Text>
+                </View>
+              </TouchableOpacity>
             )}
 
             {/* Inventory */}

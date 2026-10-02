@@ -110,23 +110,47 @@ export default function RenewalsScreen() {
     }
   };
 
-  const handleSendReminder = async (item) => {
-    try {
-      const result = await apiPost(`/renewals/${item.id}/remind`, {});
-      Alert.alert('Reminder Processed', result?.message || 'Customer reminder processed.');
-    } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to send reminder');
-    }
+  const handleSendReminder = (item) => {
+    Alert.alert(
+      'Send Renewal Reminder',
+      `Are you sure you want to send a renewal reminder notification to ${item.customer}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Reminder',
+          onPress: async () => {
+            try {
+              const result = await apiPost(`/renewals/${item.id}/remind`, {});
+              Alert.alert('Reminder Processed', result?.message || 'Customer reminder processed.');
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Failed to send reminder');
+            }
+          }
+        }
+      ]
+    );
   };
 
-  const handleRenew = async (item) => {
-    try {
-      await apiPost(`/renewals/${item.id}/renew`, { date: new Date().toISOString().slice(0, 10), gst: 18 });
-      Alert.alert('Renewed', 'The service was renewed for one year and an invoice was generated.');
-      fetchRenewals();
-    } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to renew service');
-    }
+  const handleRenew = (item) => {
+    Alert.alert(
+      'Confirm Subscription Renewal',
+      `Are you sure you want to renew the ${item.type} service for ${item.customer} for one year and generate a renewal invoice?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Renew Now',
+          onPress: async () => {
+            try {
+              await apiPost(`/renewals/${item.id}/renew`, { date: new Date().toISOString().slice(0, 10), gst: 18 });
+              Alert.alert('Renewed', 'The service was renewed for one year and an invoice was generated.');
+              fetchRenewals();
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Failed to renew service');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const filteredRenewals = renewals.filter(r => {

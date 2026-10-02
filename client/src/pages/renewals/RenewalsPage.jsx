@@ -16,6 +16,8 @@ export default function RenewalsPage() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState(null)
+  const [actionLoading, setActionLoading] = useState(false)
   const [form, setForm] = useState({
     customerId: '', type: 'GPS Renewal', nextDue: '', amount: ''
   })
@@ -53,6 +55,35 @@ export default function RenewalsPage() {
       setModalOpen(false)
     } catch (err) {
       toast.error(err.message)
+    }
+  }
+
+  const handleExecuteAction = async () => {
+    if (!confirmAction) return
+    const { type, renewal: r } = confirmAction
+    setActionLoading(true)
+    try {
+      if (type === 'renew') {
+        const result = await apiPost(`/renewals/${r.id}/renew`, {})
+        setRenewals(prev => prev.map(item => item.id === r.id ? result.renewal : item))
+        toast.success(`Renewal processed and invoice ${result.invoice.id} created`)
+      } else if (type === 'invoice') {
+        const invoice = await apiPost(`/renewals/${r.id}/generate-invoice`, {})
+        toast.success(`Invoice ${invoice.id} created for ${r.customer}`)
+      } else if (type === 'remind') {
+        const result = await apiPost(`/renewals/${r.id}/remind`, {})
+        const delivered = Object.entries(result.channels || {})
+          .filter(([, status]) => status === 'Delivered')
+          .map(([channel]) => channel)
+        toast.success(delivered.length
+          ? `Reminder delivered via ${delivered.join(', ')} to ${r.customer}`
+          : 'Reminder processed. Configure SMTP or another provider for external delivery.')
+      }
+      setConfirmAction(null)
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -167,15 +198,7 @@ export default function RenewalsPage() {
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', cursor: 'pointer'
                       }}
-                      onClick={async () => {
-                        try {
-                          const result = await apiPost(`/renewals/${r.id}/renew`, {})
-                          setRenewals(prev => prev.map(item => item.id === r.id ? result.renewal : item))
-                          toast.success(`Renewal processed and invoice ${result.invoice.id} created`)
-                        } catch (error) {
-                          toast.error(error.message)
-                        }
-                      }}
+                      onClick={() => setConfirmAction({ type: 'renew', renewal: r })}
                     >
                       <RefreshCw size={15} style={{ color: '#10b981' }} />
                     </button>
@@ -186,14 +209,7 @@ export default function RenewalsPage() {
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', cursor: 'pointer'
                       }}
-                      onClick={async () => {
-                        try {
-                          const invoice = await apiPost(`/renewals/${r.id}/generate-invoice`, {})
-                          toast.success(`Invoice ${invoice.id} created for ${r.customer}`)
-                        } catch (error) {
-                          toast.error(error.message)
-                        }
-                      }}
+                      onClick={() => setConfirmAction({ type: 'invoice', renewal: r })}
                     >
                       <Receipt size={15} style={{ color: '#3b82f6' }} />
                     </button>
@@ -204,19 +220,7 @@ export default function RenewalsPage() {
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', cursor: 'pointer'
                       }}
-                      onClick={async () => {
-                        try {
-                          const result = await apiPost(`/renewals/${r.id}/remind`, {})
-                          const delivered = Object.entries(result.channels || {})
-                            .filter(([, status]) => status === 'Delivered')
-                            .map(([channel]) => channel)
-                          toast.success(delivered.length
-                            ? `Reminder delivered via ${delivered.join(', ')} to ${r.customer}`
-                            : 'Reminder processed. Configure SMTP or another provider for external delivery.')
-                        } catch (error) {
-                          toast.error(error.message)
-                        }
-                      }}
+                      onClick={() => setConfirmAction({ type: 'remind', renewal: r })}
                     >
                       <Send size={15} style={{ color: '#6366f1' }} />
                     </button>
@@ -274,6 +278,148 @@ export default function RenewalsPage() {
                 <button type="submit" className="btn-primary">Add Schedule</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog Box in current theme */}
+      {confirmAction && (
+        <div className="modal-backdrop" onClick={() => !actionLoading && setConfirmAction(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            {/* Header with Icon and Title */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: confirmAction.type === 'renew'
+                  ? 'rgba(16, 185, 129, 0.12)'
+                  : confirmAction.type === 'invoice'
+                  ? 'rgba(59, 130, 246, 0.12)'
+                  : 'rgba(99, 102, 241, 0.12)',
+                border: `1px solid ${
+                  confirmAction.type === 'renew'
+                    ? 'rgba(16, 185, 129, 0.25)'
+                    : confirmAction.type === 'invoice'
+                    ? 'rgba(59, 130, 246, 0.25)'
+                    : 'rgba(99, 102, 241, 0.25)'
+                }`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                {confirmAction.type === 'renew' && <RefreshCw size={22} style={{ color: '#10b981' }} />}
+                {confirmAction.type === 'invoice' && <Receipt size={22} style={{ color: '#3b82f6' }} />}
+                {confirmAction.type === 'remind' && <Send size={22} style={{ color: '#6366f1' }} />}
+              </div>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                  {confirmAction.type === 'renew' && 'Confirm Subscription Renewal'}
+                  {confirmAction.type === 'invoice' && 'Generate Renewal Invoice'}
+                  {confirmAction.type === 'remind' && 'Send Renewal Reminder'}
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+                  {confirmAction.type === 'renew' && 'Instant Renewal & Invoicing'}
+                  {confirmAction.type === 'invoice' && 'Accounts & Billing'}
+                  {confirmAction.type === 'remind' && 'Multi-Channel Notification'}
+                </p>
+              </div>
+            </div>
+
+            {/* Prompt description */}
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16 }}>
+              {confirmAction.type === 'renew' && (
+                <>
+                  Are you sure you want to renew the subscription for <strong style={{ color: 'var(--text-primary)' }}>{confirmAction.renewal.customer}</strong>?
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, marginBottom: 0 }}>
+                    This will advance the subscription cycle by 1 year and generate a new renewal invoice in Accounts.
+                  </p>
+                </>
+              )}
+              {confirmAction.type === 'invoice' && (
+                <>
+                  Are you sure you want to generate a renewal invoice for <strong style={{ color: 'var(--text-primary)' }}>{confirmAction.renewal.customer}</strong>?
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, marginBottom: 0 }}>
+                    This will create a new unpaid invoice in Accounts without changing the next due date.
+                  </p>
+                </>
+              )}
+              {confirmAction.type === 'remind' && (
+                <>
+                  Are you sure you want to dispatch a renewal reminder notification to <strong style={{ color: 'var(--text-primary)' }}>{confirmAction.renewal.customer}</strong>?
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, marginBottom: 0 }}>
+                    This will dispatch notifications across configured SMS, WhatsApp, RCS, Voice, and Email gateways.
+                  </p>
+                </>
+              )}
+
+              {/* Renewal Record Details Summary */}
+              <div style={{
+                marginTop: 14,
+                padding: '12px 14px',
+                background: 'var(--bg-secondary, rgba(255, 255, 255, 0.03))',
+                borderRadius: 10,
+                border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                fontSize: 13
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Client Customer:</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{confirmAction.renewal.customer}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Renewal Type:</span>
+                  <span className="badge badge-purple" style={{ fontSize: 11 }}>{confirmAction.renewal.type}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Next Due Date:</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{confirmAction.renewal.nextDue}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Renewal Price:</span>
+                  <strong style={{ color: '#10b981', fontWeight: 700 }}>{money(confirmAction.renewal.amount)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Current Status:</span>
+                  <span className={`badge ${confirmAction.renewal.status === 'Active' ? 'badge-success' : confirmAction.renewal.status === 'Overdue' ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: 11 }}>
+                    {confirmAction.renewal.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmAction(null)}
+                disabled={actionLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{
+                  background: confirmAction.type === 'renew' ? '#10b981' : confirmAction.type === 'invoice' ? '#3b82f6' : '#6366f1',
+                  borderColor: confirmAction.type === 'renew' ? '#10b981' : confirmAction.type === 'invoice' ? '#3b82f6' : '#6366f1'
+                }}
+                onClick={handleExecuteAction}
+                disabled={actionLoading}
+              >
+                {actionLoading ? 'Processing...' : (
+                  confirmAction.type === 'renew'
+                    ? 'Yes, Renew Now'
+                    : confirmAction.type === 'invoice'
+                    ? 'Yes, Generate Invoice'
+                    : 'Yes, Send Reminder'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
