@@ -19,11 +19,11 @@ const NAV_ITEMS = [
   { path: '/customers', icon: UserCheck,       label: 'Customers',      color: '#10b981' },
   { path: '/installations', icon: Wrench,          label: 'Installations',  color: '#8b5cf6' },
   { path: '/renewals',      icon: RefreshCw,       label: 'Renewals',       color: '#ec4899' },
-  // {
-  //   label: 'Finance', icon: CreditCard, color: '#f59e0b', children: [
-  //     { path: '/accounts', icon: CreditCard, label: 'Accounts', color: '#fb923c' },
-  //   ]
-  // },
+  {
+    label: 'Finance', icon: CreditCard, color: '#f59e0b', children: [
+      { path: '/accounts', icon: CreditCard, label: 'Accounts', color: '#fb923c' },
+    ]
+  },
   { path: '/inventory',    icon: Package,         label: 'Inventory',      color: '#10b981' },
   { path: '/users',        icon: Shield,          label: 'System Users',   color: '#f97316' },
   {

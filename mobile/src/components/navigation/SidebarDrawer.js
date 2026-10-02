@@ -407,8 +407,8 @@ export default function SidebarDrawer({ navigationRef }) {
               </TouchableOpacity>
             )}
 
-            {/* Collapsible: Finance (Commented out for now) */}
-            {/* {canAccessScreen(role, 'Accounts') && (
+            {/* Collapsible: Finance */}
+            {canAccessScreen(role, 'Accounts') && (
               <View style={styles.accordionContainer}>
                 <TouchableOpacity
                   style={styles.navItem}
@@ -438,7 +438,7 @@ export default function SidebarDrawer({ navigationRef }) {
                   </View>
                 )}
               </View>
-            )} */}
+            )}
 
             {/* Inventory */}
             {canAccessScreen(role, 'Inventory') && (
