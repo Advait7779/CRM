@@ -4,9 +4,8 @@ import { apiGet, apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
-import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, Pencil, Trash2, UserCheck, FilePlus } from 'lucide-react'
+import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, UserCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
-import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
 const LEAD_STATUSES = ['New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost']
 const LEAD_SOURCES  = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial']
@@ -167,7 +166,8 @@ export default function LeadsPage() {
   const [filterSource, setFilter] = useState('All')
   const [reviewOnly, setReviewOnly] = useState(false)
   const [modal, setModal]         = useState(null) // null | { lead, isNew }
-  const [confirmDeleteLead, setConfirmDeleteLead] = useState(null)
+  const [confirmConvertLead, setConfirmConvertLead] = useState(null)
+  const [converting, setConverting] = useState(false)
 
   useEffect(() => {
     apiGetAll('/leads')
@@ -204,23 +204,18 @@ export default function LeadsPage() {
 
   const navigate = useNavigate()
 
-  const handleConvertLead = async (lead) => {
+  const handleConfirmConvert = async () => {
+    if (!confirmConvertLead) return
+    setConverting(true)
     try {
-      await apiPost(`/leads/${lead.id}/convert`)
-      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: 'Converted' } : l))
-      toast.success(`Converted ${lead.name} to active customer account!`)
+      await apiPost(`/leads/${confirmConvertLead.id}/convert`)
+      setLeads(prev => prev.map(l => l.id === confirmConvertLead.id ? { ...l, status: 'Converted' } : l))
+      toast.success(`Converted ${confirmConvertLead.name} to active customer account!`)
+      setConfirmConvertLead(null)
     } catch (err) {
       toast.error(err.message)
-    }
-  }
-
-  const handleDelete = async (id) => {
-    try {
-      await apiDelete(`/leads/${id}`)
-      setLeads(prev => prev.filter(l => l.id !== id))
-      toast.success('Lead deleted.')
-    } catch (err) {
-      toast.error(err.message)
+    } finally {
+      setConverting(false)
     }
   }
 
@@ -303,59 +298,32 @@ export default function LeadsPage() {
                   <td style={{ color: l.followUp ? '#f59e0b' : '#475569', fontSize: 13 }}>{l.followUp || '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {l.status !== 'Converted' && (
+                      {l.status !== 'Converted' ? (
                         <button
-                          onClick={() => handleConvertLead(l)}
+                          onClick={() => setConfirmConvertLead(l)}
                           title="Convert Lead to Active Customer"
                           style={{
                             width: 32, height: 32, borderRadius: 8,
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)',
-                            cursor: 'pointer'
+                            cursor: 'pointer', transition: 'all 0.15s ease'
                           }}
                         >
                           <UserCheck size={15} style={{ color: '#10b981' }} />
                         </button>
+                      ) : (
+                        <span
+                          title="Lead is already converted to an active customer"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            fontSize: 11, fontWeight: 600, color: '#10b981',
+                            background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)',
+                            padding: '3px 8px', borderRadius: 8
+                          }}
+                        >
+                          <UserCheck size={12} /> Converted
+                        </span>
                       )}
-
-                      <button
-                        onClick={() => navigate('/quotations')}
-                        title="Generate Quotation for Lead"
-                        style={{
-                          width: 32, height: 32, borderRadius: 8,
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <FilePlus size={15} style={{ color: '#6366f1' }} />
-                      </button>
-
-                      <button
-                        onClick={() => setModal({ lead: l, isNew: false })}
-                        title="Edit Lead"
-                        style={{
-                          width: 32, height: 32, borderRadius: 8,
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Pencil size={15} style={{ color: '#6366f1' }} />
-                      </button>
-
-                      <button
-                        onClick={() => setConfirmDeleteLead(l)}
-                        title="Delete Lead"
-                        style={{
-                          width: 32, height: 32, borderRadius: 8,
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.25)',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Trash2 size={15} style={{ color: '#ef4444' }} />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -376,23 +344,94 @@ export default function LeadsPage() {
         />
       )}
 
-      <ConfirmDeleteModal
-        isOpen={Boolean(confirmDeleteLead)}
-        onClose={() => setConfirmDeleteLead(null)}
-        title="Delete Lead"
-        subtitle={confirmDeleteLead ? `Prospect: ${confirmDeleteLead.name}` : ''}
-        message={
-          confirmDeleteLead ? (
-            <>Are you sure you want to delete lead <strong style={{ color: 'var(--text-primary)' }}>{confirmDeleteLead.name}</strong> for {confirmDeleteLead.service || 'service'}? This action cannot be undone.</>
-          ) : null
-        }
-        confirmText="Delete Lead"
-        onConfirm={async () => {
-          if (!confirmDeleteLead) return
-          await handleDelete(confirmDeleteLead.id)
-          setConfirmDeleteLead(null)
-        }}
-      />
+      {confirmConvertLead && (
+        <div className="modal-backdrop" onClick={() => !converting && setConfirmConvertLead(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <UserCheck size={22} style={{ color: '#10b981' }} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                  Convert to Active Customer
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+                  Confirmation Required
+                </p>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 20 }}>
+              Are you sure you want to convert <strong style={{ color: 'var(--text-primary)' }}>{confirmConvertLead.name}</strong> into an active customer account?
+
+              <div style={{
+                marginTop: 12,
+                padding: '12px 14px',
+                background: 'var(--bg-secondary, rgba(255, 255, 255, 0.03))',
+                borderRadius: 10,
+                border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                fontSize: 13
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Phone:</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{confirmConvertLead.phone || '—'}</strong>
+                </div>
+                {confirmConvertLead.company && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Company:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{confirmConvertLead.company}</strong>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Service:</span>
+                  <span className="badge badge-purple" style={{ fontSize: 11 }}>{confirmConvertLead.service || 'General Service'}</span>
+                </div>
+                {confirmConvertLead.source && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Source:</span>
+                    <strong style={{ color: SOURCE_COLOR[confirmConvertLead.source] || 'var(--text-primary)' }}>
+                      {confirmConvertLead.source}
+                    </strong>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmConvertLead(null)}
+                disabled={converting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ background: '#10b981', borderColor: '#10b981' }}
+                onClick={handleConfirmConvert}
+                disabled={converting}
+              >
+                {converting ? 'Converting...' : 'Yes, Convert to Customer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
