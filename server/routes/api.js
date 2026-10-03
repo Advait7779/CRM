@@ -10,7 +10,7 @@ const { prisma, Prisma } = require('../config/prisma');
 const { currentDateOnly, prepareData, prismaId, toDateOnly } = require('../utils/prismaData');
 const { authMiddleware, checkRole } = require('../middleware/auth');
 const { sendMultiChannelNotification } = require('../services/notificationService');
-const { ALL_WEBHOOK_SETTING_KEYS, sendSavedWebhookNotifications } = require('../services/savedWebhookNotifications');
+const { ALL_WEBHOOK_SETTING_KEYS, sendSavedWebhookNotifications, sendNewLeadSmsNotification } = require('../services/savedWebhookNotifications');
 const { isGroupMember, groupAccessWhere } = require('../utils/accessPolicy');
 const { JUSTDIAL_PRODUCTS, ASSIGNABLE_PRODUCTS, classifyJustdialCategory, validProductSelection, leadAccessWhere, canAccessLead } = require('../services/justdialProducts');
 
@@ -722,10 +722,12 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
       });
       queueMultiChannelNotification({
         toEmail: record.email,
-        toPhone: record.phone,
         subject: 'We received your enquiry',
-        textContent: `Hello ${record.name}, thank you for contacting us about ${record.service}.`
+        textContent: `Hello ${record.name}, thank you for contacting us about ${record.service}.`,
+        channels: ['email']
       });
+      setImmediate(() => sendNewLeadSmsNotification(prisma, record.phone)
+        .catch(error => console.error('[Webhook] New lead SMS failed to load settings:', error.message)));
     }
     if (routeName === 'installations') {
       await broadcastNotification(req, {

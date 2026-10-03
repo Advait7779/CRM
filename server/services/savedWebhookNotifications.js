@@ -6,12 +6,13 @@ const WEBHOOK_SETTING_KEYS = [
   'rcs_webhook_url',
   'voice_call_webhook_url'
 ];
+const NEW_LEAD_SMS_SETTING_KEY = 'new_lead_sms_webhook_url';
 const JUSTDIAL_GROUPS = ['cctv', 'gps_fuel', 'digital'];
 const JUSTDIAL_CHANNELS = ['sms', 'rcs', 'voice', 'whatsapp'];
 const JUSTDIAL_WEBHOOK_SETTING_KEYS = JUSTDIAL_GROUPS.flatMap(group =>
   JUSTDIAL_CHANNELS.map(channel => `justdial_${group}_${channel}_webhook_url`)
 );
-const ALL_WEBHOOK_SETTING_KEYS = [...WEBHOOK_SETTING_KEYS, ...JUSTDIAL_WEBHOOK_SETTING_KEYS];
+const ALL_WEBHOOK_SETTING_KEYS = [...WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, ...JUSTDIAL_WEBHOOK_SETTING_KEYS];
 
 function webhookUrlForPhone(template, phone) {
   const digits = String(phone || '').replace(/[^0-9]/g, '');
@@ -55,18 +56,43 @@ async function sendSavedWebhookNotifications(prisma, phone, fetchImpl = fetch) {
   return sendConfiguredUrls(rows, () => phone, fetchImpl);
 }
 
+async function sendNewLeadSmsNotification(prisma, phone, fetchImpl = fetch) {
+  if (!String(phone || '').replace(/[^0-9]/g, '')) {
+    console.log('[Webhook] New lead SMS skipped: no valid phone number.');
+    return [];
+  }
+  const rows = await prisma.appSettings.findMany({ where: { key: NEW_LEAD_SMS_SETTING_KEY } });
+  if (!rows.some(row => row.value?.trim())) {
+    console.log('[Webhook] New lead SMS skipped: URL is not configured in Settings.');
+    return [];
+  }
+  return sendConfiguredUrls(rows, () => phone, fetchImpl);
+}
+
 async function sendJustdialWebhookNotifications(prisma, lead, payload, fetchImpl = fetch) {
   const group = notificationGroupForProduct(lead.justdialProduct);
-  if (!group) return [];
+  if (!group) {
+    console.log(`[Webhook] Justdial lead ${lead.id || 'unknown'}: no notifications for unclassified product.`);
+    return [];
+  }
   const mobile = payload.mobile && payload.dncmobile !== '1' ? payload.mobile : null;
   const landline = payload.phone && payload.dncphone !== '1' ? payload.phone : null;
-  if (!mobile && !landline) return [];
+  if (!mobile && !landline) {
+    console.log(`[Webhook] Justdial lead ${lead.id || 'unknown'} (${group}): no eligible phone number.`);
+    return [];
+  }
   const keys = JUSTDIAL_CHANNELS.map(channel => `justdial_${group}_${channel}_webhook_url`);
   const rows = await prisma.appSettings.findMany({ where: { key: { in: keys } } });
+  const configured = new Set(rows.filter(row => row.value?.trim()).map(row => row.key));
+  for (const channel of JUSTDIAL_CHANNELS) {
+    const key = `justdial_${group}_${channel}_webhook_url`;
+    if (!configured.has(key)) console.log(`[Webhook] Justdial lead ${lead.id || 'unknown'}: ${channel} skipped because ${group} URL is not configured.`);
+    else if (channel !== 'voice' && !mobile) console.log(`[Webhook] Justdial lead ${lead.id || 'unknown'}: ${channel} skipped because mobile is unavailable or marked DNC.`);
+  }
   return sendConfiguredUrls(rows, key => key.includes('_voice_') ? (mobile || landline) : mobile, fetchImpl);
 }
 
 module.exports = {
-  WEBHOOK_SETTING_KEYS, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
-  webhookUrlForPhone, sendSavedWebhookNotifications, sendJustdialWebhookNotifications
+  WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
+  webhookUrlForPhone, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
 };

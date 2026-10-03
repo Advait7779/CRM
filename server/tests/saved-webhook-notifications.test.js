@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  WEBHOOK_SETTING_KEYS, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
-  webhookUrlForPhone, sendSavedWebhookNotifications, sendJustdialWebhookNotifications
+  WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
+  webhookUrlForPhone, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
 } = require('../services/savedWebhookNotifications');
 
 test('saved notification URLs replace number or phone and otherwise append phone', () => {
@@ -46,8 +46,22 @@ test('all four configured channels receive one request with the recipient number
   assert.ok(requested.every(({ url, options }) => url.includes('phone=9876543210') && options.method === 'GET'));
 });
 
+test('new CRM leads use only the separate new lead SMS URL', async () => {
+  const requested = [];
+  const prisma = { appSettings: { async findMany({ where }) {
+    assert.equal(where.key, NEW_LEAD_SMS_SETTING_KEY);
+    return [{ key: NEW_LEAD_SMS_SETTING_KEY, value: 'https://provider.example/new-lead?number=0000000000' }];
+  } } };
+  const result = await sendNewLeadSmsNotification(prisma, '9876543210', async url => {
+    requested.push(url);
+    return { ok: true, status: 200 };
+  });
+  assert.equal(result.length, 1);
+  assert.deepEqual(requested, ['https://provider.example/new-lead?number=9876543210']);
+});
+
 test('Justdial sends the four URLs for the matching product group only', async () => {
-  assert.equal(ALL_WEBHOOK_SETTING_KEYS.length, 16);
+  assert.equal(ALL_WEBHOOK_SETTING_KEYS.length, 17);
   assert.equal(JUSTDIAL_WEBHOOK_SETTING_KEYS.length, 12);
   const requested = [];
   const prisma = { appSettings: { async findMany({ where }) {

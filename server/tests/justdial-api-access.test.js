@@ -44,7 +44,7 @@ const prisma = {
 require.cache[require.resolve('../config/prisma')].exports = { ...config, prisma };
 const apiRouter = require('../routes/api');
 
-test('Leads API scopes Justdial enquiries per user and Settings API keeps all 16 URL fields', async t => {
+test('Leads API scopes Justdial enquiries per user and Settings API keeps all 17 URL fields', async t => {
   const app = express();
   app.use(express.json());
   app.use('/api', apiRouter);
@@ -77,14 +77,16 @@ test('Leads API scopes Justdial enquiries per user and Settings API keeps all 16
 
   const initial = await request(1, '/settings');
   assert.equal(initial.status, 200);
-  assert.equal(Object.keys(initial.data).length, 16);
+  assert.equal(Object.keys(initial.data).length, 17);
   assert.equal((await request(2, '/settings')).status, 403);
   const saved = await request(1, '/settings', 'PUT', {
     sms_webhook_url: 'https://provider.example/customer?number=000',
+    new_lead_sms_webhook_url: 'https://provider.example/new-lead?number=000',
     justdial_cctv_sms_webhook_url: 'https://provider.example/cctv?number=000'
   });
   assert.equal(saved.status, 200);
   assert.equal(saved.data.sms_webhook_url, 'https://provider.example/customer?number=000');
+  assert.equal(saved.data.new_lead_sms_webhook_url, 'https://provider.example/new-lead?number=000');
   assert.equal(saved.data.justdial_cctv_sms_webhook_url, 'https://provider.example/cctv?number=000');
-  assert.equal(Object.keys(saved.data).length, 16);
+  assert.equal(Object.keys(saved.data).length, 17);
 });

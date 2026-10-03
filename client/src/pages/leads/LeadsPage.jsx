@@ -141,7 +141,7 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions }) {
           </div>
           {isNew && (
             <div style={{ padding: 14, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 10, marginBottom: 16, fontSize: 13, color: '#10b981' }}>
-              ✓ Auto notifications will be sent via WhatsApp, SMS &amp; Email when this lead is created
+              SMS will be sent if the New Lead SMS URL is configured. Email requires SMTP configuration.
             </div>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

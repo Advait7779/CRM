@@ -18,6 +18,7 @@ const JUSTDIAL_CHANNELS = [
 ]
 const SETTING_KEYS = [
   ...CUSTOMER_SETTING_KEYS,
+  'new_lead_sms_webhook_url',
   ...JUSTDIAL_GROUPS.flatMap(group => JUSTDIAL_CHANNELS.map(channel => `justdial_${group.id}_${channel.id}_webhook_url`))
 ]
 const emptySettings = () => Object.fromEntries(SETTING_KEYS.map(key => [key, '']))
@@ -199,6 +200,22 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        <section className="glass-card" style={{ padding: 28, marginTop: 36 }}>
+          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>New Lead SMS</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>Runs when a lead is created in this CRM. Use an approved enquiry template; the New Customer SMS URL above remains for customer profiles.</p>
+          <div className="form-group">
+            <label className="form-label">New Lead SMS URL</label>
+            <textarea
+              className="input-field"
+              value={form.new_lead_sms_webhook_url}
+              onChange={e => setForm(current => ({ ...current, new_lead_sms_webhook_url: e.target.value }))}
+              placeholder="https://provider.example/send-sms?number={phone}&templateid=..."
+              style={{ minHeight: 92, fontSize: 12, fontFamily: 'monospace', resize: 'vertical', lineHeight: 1.5 }}
+            />
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>Use {'{phone}'} in the recipient parameter, or an existing phone/number parameter will be replaced.</p>
+          </div>
+        </section>
 
         <div style={{ marginTop: 36, marginBottom: 18 }}>
           <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>Justdial Enquiry Notifications</h2>
