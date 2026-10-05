@@ -33,12 +33,21 @@ function webhookUrlForPhone(template, phone) {
   return `${base}${base.includes('?') ? '&' : '?'}phone=${encodeURIComponent(digits)}${hash}`;
 }
 
-async function sendConfiguredUrls(rows, recipientForKey, fetchImpl) {
+function webhookUrlForName(url, name) {
+  const customerName = String(name || '').trim();
+  if (!customerName) return url;
+  // Replace placeholders only in SMS text, leaving API keys and template IDs untouched.
+  return url.replace(/([?&]sms=)([^&#]*)/gi, (_, prefix, message) =>
+    prefix + message.replace(/\[alp\]|%5Balp%5D|\{name\}|%7Bname%7D/gi, encodeURIComponent(customerName))
+  );
+}
+
+async function sendConfiguredUrls(rows, recipientForKey, fetchImpl, name) {
   return Promise.all(rows.filter(row => row.value?.trim()).map(async row => {
     const phone = recipientForKey(row.key);
     if (!phone) return { key: row.key, skipped: true };
     try {
-      const url = webhookUrlForPhone(row.value, phone);
+      const url = webhookUrlForName(webhookUrlForPhone(row.value, phone), name);
       const response = await fetchImpl(url, { method: 'GET', signal: AbortSignal.timeout(15000) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       console.log(`[Webhook] ${row.key}: HTTP ${response.status}`);
@@ -89,10 +98,10 @@ async function sendJustdialWebhookNotifications(prisma, lead, payload, fetchImpl
     if (!configured.has(key)) console.log(`[Webhook] Justdial lead ${lead.id || 'unknown'}: ${channel} skipped because ${group} URL is not configured.`);
     else if (channel !== 'voice' && !mobile) console.log(`[Webhook] Justdial lead ${lead.id || 'unknown'}: ${channel} skipped because mobile is unavailable or marked DNC.`);
   }
-  return sendConfiguredUrls(rows, key => key.includes('_voice_') ? (mobile || landline) : mobile, fetchImpl);
+  return sendConfiguredUrls(rows, key => key.includes('_voice_') ? (mobile || landline) : mobile, fetchImpl, lead.name);
 }
 
 module.exports = {
   WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
-  webhookUrlForPhone, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
+  webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
 };

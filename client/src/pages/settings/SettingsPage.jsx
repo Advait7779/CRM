@@ -242,7 +242,7 @@ export default function SettingsPage() {
                 )
               })}
             </div>
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-secondary)' }}>Use {'{phone}'} in the recipient parameter, or the existing phone/number parameter will be replaced. Justdial DNC marked numbers are skipped.</p>
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-secondary)' }}>Use {'{phone}'} in the recipient parameter, or the existing phone/number parameter will be replaced. In SMS text, [alp] or {'{name}'} becomes the Justdial lead name. Justdial DNC marked numbers are skipped.</p>
           </section>
         ))}
 

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
-  webhookUrlForPhone, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
+  webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
 } = require('../services/savedWebhookNotifications');
 
 test('saved notification URLs replace number or phone and otherwise append phone', () => {
@@ -23,6 +23,16 @@ test('saved notification URLs replace number or phone and otherwise append phone
     'https://provider.example/rcs?number=9000000000'
   );
   assert.throws(() => webhookUrlForPhone('file:///tmp/test', '9000000000'), /HTTP or HTTPS/);
+});
+
+test('Justdial SMS name placeholders render without changing the template ID or API key', () => {
+  const original = 'https://provider.example/send?key=%5Balp%5D&number=000&sms=Dear+%5Balp%5D%2C+welcome&templateid=123';
+  const rendered = new URL(webhookUrlForName(webhookUrlForPhone(original, '9876543210'), 'Asha & Co'));
+  assert.equal(rendered.searchParams.get('sms'), 'Dear Asha & Co, welcome');
+  assert.equal(rendered.searchParams.get('number'), '9876543210');
+  assert.equal(rendered.searchParams.get('key'), '[alp]');
+  assert.equal(rendered.searchParams.get('templateid'), '123');
+  assert.equal(new URL(webhookUrlForName('https://provider.example/send?sms=Dear+[alp]+and+{name}', 'Ravi')).searchParams.get('sms'), 'Dear Ravi and Ravi');
 });
 
 test('all four configured channels receive one request with the recipient number', async () => {
@@ -76,6 +86,21 @@ test('Justdial sends the four URLs for the matching product group only', async (
   const digital = await sendJustdialWebhookNotifications(prisma, { justdialProduct: 'Website Development' }, { mobile: '9000000000' }, fetchImpl);
   assert.equal(digital.length, 4);
   assert.ok(requested.every(url => url.includes('justdial_digital_')));
+});
+
+test('Justdial SMS request contains the lead name from the callback', async () => {
+  const prisma = { appSettings: { async findMany() {
+    return [{ key: 'justdial_cctv_sms_webhook_url', value: 'https://provider.example/send?number=000&sms=Dear+%5Balp%5D%2C+thank+you&templateid=123' }];
+  } } };
+  const requested = [];
+  await sendJustdialWebhookNotifications(prisma, { id: 42, name: 'Mr Parag', justdialProduct: 'CCTV' }, { mobile: '9876543210' }, async url => {
+    requested.push(url);
+    return { ok: true, status: 200 };
+  });
+  assert.equal(requested.length, 1);
+  const url = new URL(requested[0]);
+  assert.equal(url.searchParams.get('sms'), 'Dear Mr Parag, thank you');
+  assert.equal(url.searchParams.get('number'), '9876543210');
 });
 
 test('Justdial respects DNC flags and does not send messages to landlines', async () => {
