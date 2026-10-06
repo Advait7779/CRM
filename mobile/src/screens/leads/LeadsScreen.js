@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { apiGetAll, apiPost, apiPut } from '../../config/api';
+import { apiGet, apiGetAll, apiPost, apiPut } from '../../config/api';
 import Header from '../../components/common/Header';
 import SearchInput from '../../components/common/SearchInput';
 import Badge from '../../components/common/Badge';
@@ -30,19 +30,31 @@ import {
   X,
 } from 'lucide-react-native';
 
-const STATUS_LIST = ['All', 'New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost'];
-const SOURCE_LIST = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Other'];
-const SERVICE_LIST = ['GPS Tracking', 'CCTV Security', 'Web Development', 'Digital Marketing', 'AMC Support'];
+const STATUS_LIST = ['All', 'New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost', 'Converted'];
+const SOURCE_LIST = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial', 'Other'];
+const SERVICE_LIST = ['GPS Tracking', 'CCTV', 'CCTV Security', 'Website Design', 'Web Development', 'Software Development', 'SMS Package', 'WhatsApp WABA', 'RCS Messaging', 'Voice Package', 'Digital Marketing', 'AMC Support'];
+const leadDate = lead => {
+  const enquiryDate = lead.source === 'Justdial' ? String(lead.justdialPayload?.date || '') : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(enquiryDate) && !Number.isNaN(new Date(`${enquiryDate}T00:00:00Z`).getTime())) {
+    return `${enquiryDate}${lead.justdialPayload?.time ? ` ${String(lead.justdialPayload.time).slice(0, 5)}` : ''}`;
+  }
+  const received = new Date(lead.createdAt);
+  return Number.isNaN(received.getTime()) ? 'Date unavailable' : received.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
 
 export default function LeadsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const isAdmin = ['super_admin', 'director'].includes(user?.role);
 
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All');
+  const [selectedSource, setSelectedSource] = useState('All');
+  const [reviewOnly, setReviewOnly] = useState(false);
+  const [productOptions, setProductOptions] = useState([]);
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -58,7 +70,8 @@ export default function LeadsScreen() {
     status: 'New',
     exec: '',
     followUp: '',
-    notes: ''
+    notes: '',
+    justdialProduct: 'Unclassified'
   });
 
   const fetchLeads = useCallback(async () => {
@@ -77,6 +90,10 @@ export default function LeadsScreen() {
     fetchLeads();
   }, [fetchLeads]);
 
+  useEffect(() => {
+    if (isAdmin) apiGet('/justdial/products').then(data => setProductOptions(data?.assignable || [])).catch(() => {});
+  }, [isAdmin]);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchLeads();
@@ -94,7 +111,8 @@ export default function LeadsScreen() {
       status: 'New',
       exec: user?.name || '',
       followUp: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: ''
+      notes: '',
+      justdialProduct: 'Unclassified'
     });
     setModalVisible(true);
   };
@@ -111,7 +129,8 @@ export default function LeadsScreen() {
       status: lead.status || 'New',
       exec: lead.exec || '',
       followUp: lead.followUp || '',
-      notes: lead.notes || ''
+      notes: lead.notes || '',
+      justdialProduct: lead.justdialProduct || 'Unclassified'
     });
     setModalVisible(true);
   };
@@ -125,10 +144,19 @@ export default function LeadsScreen() {
     setSaving(true);
     try {
       if (editingId) {
-        await apiPut(`/leads/${editingId}`, formData);
+        const editingLead = leads.find(lead => lead.id === editingId);
+        const payload = { ...formData };
+        if (editingLead?.source === 'Justdial' && !isAdmin) {
+          delete payload.source;
+          delete payload.service;
+          delete payload.justdialProduct;
+        }
+        await apiPut(`/leads/${editingId}`, payload);
         Alert.alert('Success', 'Lead updated successfully');
       } else {
-        await apiPost('/leads', formData);
+        const payload = { ...formData };
+        delete payload.justdialProduct;
+        await apiPost('/leads', payload);
         Alert.alert('Success', 'Lead created successfully');
       }
       setModalVisible(false);
@@ -150,7 +178,9 @@ export default function LeadsScreen() {
       (lead.service || '').toLowerCase().includes(search.toLowerCase());
 
     const matchStatus = selectedStatus === 'All' || lead.status === selectedStatus;
-    return matchSearch && matchStatus;
+    const matchSource = selectedSource === 'All' || lead.source === selectedSource;
+    const matchReview = !reviewOnly || (lead.source === 'Justdial' && (!lead.justdialProduct || lead.justdialProduct === 'Unclassified'));
+    return matchSearch && matchStatus && matchSource && matchReview;
   });
 
   return (
@@ -199,6 +229,16 @@ export default function LeadsScreen() {
               </TouchableOpacity>
             );
           })}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          {['All', ...SOURCE_LIST].map(source => (
+            <TouchableOpacity key={source} style={[styles.filterChip, { backgroundColor: selectedSource === source ? colors.primary : colors.cardSecondary, borderColor: selectedSource === source ? colors.primary : colors.border }]}
+              onPress={() => setSelectedSource(source)}>
+              <Text style={[styles.filterChipText, { color: selectedSource === source ? '#fff' : colors.textMuted }]}>{source}</Text>
+            </TouchableOpacity>
+          ))}
+          {isAdmin ? <TouchableOpacity style={[styles.filterChip, { borderColor: '#f59e0b', backgroundColor: reviewOnly ? 'rgba(245,158,11,0.15)' : colors.cardSecondary }]}
+            onPress={() => setReviewOnly(value => !value)}><Text style={{ color: '#b45309', fontWeight: '700' }}>Needs Review ({leads.filter(lead => lead.source === 'Justdial' && (!lead.justdialProduct || lead.justdialProduct === 'Unclassified')).length})</Text></TouchableOpacity> : null}
         </ScrollView>
       </View>
 
@@ -249,6 +289,8 @@ export default function LeadsScreen() {
                   </Text>
                 </View>
               </View>
+              {item.source === 'Justdial' ? <Text style={{ color: item.justdialProduct === 'Unclassified' ? '#b45309' : colors.textMuted, fontSize: 12 }}>{item.justdialProduct || 'Unclassified'}</Text> : null}
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 5 }}>Lead date: {leadDate(item)}</Text>
 
               {/* Follow-up & Executive */}
               <View style={styles.detailsRow}>
@@ -307,6 +349,14 @@ export default function LeadsScreen() {
                 >
                   <Text style={[styles.editBtnText, { color: colors.text }]}>Edit</Text>
                 </TouchableOpacity>
+                {item.status !== 'Converted' ? <TouchableOpacity style={[styles.editBtn, { backgroundColor: 'rgba(16,185,129,0.12)' }]}
+                  onPress={() => Alert.alert('Convert to Customer', `Convert ${item.name} into an active customer account?`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Convert', onPress: async () => {
+                      try { await apiPost(`/leads/${item.id}/convert`, {}); await fetchLeads(); Alert.alert('Converted', `${item.name} is now a customer.`); }
+                      catch (error) { Alert.alert('Conversion failed', error.message); }
+                    } }
+                  ])}><Text style={{ color: '#059669', fontWeight: '700' }}>Convert</Text></TouchableOpacity> : null}
               </View>
             </View>
           )}
@@ -361,7 +411,8 @@ export default function LeadsScreen() {
             />
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Service Required</Text>
-            <View style={styles.choiceRow}>
+            {editingId && formData.source === 'Justdial' && !isAdmin ? <Text style={{ color: colors.text }}>{formData.service}</Text> : <View style={styles.choiceRow}>
+              {formData.service && !SERVICE_LIST.includes(formData.service) ? <Text style={{ color: colors.text, width: '100%' }}>Current: {formData.service}</Text> : null}
               {SERVICE_LIST.map((svc, i) => (
                 <TouchableOpacity
                   key={i}
@@ -379,11 +430,15 @@ export default function LeadsScreen() {
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </View>}
+            {editingId && formData.source === 'Justdial' && isAdmin ? <TextInput
+              style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+              value={formData.service} onChangeText={service => setFormData(current => ({ ...current, service }))}
+              placeholder="Justdial service category" placeholderTextColor={colors.textMuted} /> : null}
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Pipeline Status</Text>
             <View style={styles.choiceRow}>
-              {STATUS_LIST.filter(s => s !== 'All').map((st, i) => (
+              {STATUS_LIST.filter(s => s !== 'All' && (s !== 'Converted' || formData.status === 'Converted')).map((st, i) => (
                 <TouchableOpacity
                   key={i}
                   style={[
@@ -403,8 +458,8 @@ export default function LeadsScreen() {
             </View>
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Lead Source</Text>
-            <View style={styles.choiceRow}>
-              {SOURCE_LIST.map((src, i) => (
+            {editingId && formData.source === 'Justdial' && !isAdmin ? <Text style={{ color: colors.text }}>Justdial</Text> : <View style={styles.choiceRow}>
+              {SOURCE_LIST.filter(source => source !== 'Justdial' || (editingId && isAdmin)).map((src, i) => (
                 <TouchableOpacity
                   key={i}
                   style={[
@@ -421,7 +476,17 @@ export default function LeadsScreen() {
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </View>}
+            {editingId && formData.source === 'Justdial' && isAdmin ? <>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Justdial Product Group</Text>
+              <View style={styles.choiceRow}>
+                {['Unclassified', ...productOptions].map(product => <TouchableOpacity key={product}
+                  style={[styles.choiceChip, { borderColor: formData.justdialProduct === product ? colors.primary : colors.border, backgroundColor: formData.justdialProduct === product ? colors.primary : colors.cardSecondary }]}
+                  onPress={() => setFormData(current => ({ ...current, justdialProduct: product }))}>
+                  <Text style={{ color: formData.justdialProduct === product ? '#fff' : colors.text }}>{product}</Text>
+                </TouchableOpacity>)}
+              </View>
+            </> : null}
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Next Follow-up Date (YYYY-MM-DD)</Text>
             <TextInput

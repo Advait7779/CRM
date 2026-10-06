@@ -39,6 +39,7 @@ const ROLES = [
   'support_executive',
   'accounts'
 ];
+const LEAD_ROLES = ['sales_manager', 'sales_executive'];
 
 export default function UsersScreen() {
   const { colors } = useTheme();
@@ -56,12 +57,14 @@ export default function UsersScreen() {
   const [saving, setSaving] = useState(false);
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [productOptions, setProductOptions] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     role: 'sales_executive',
-    password: ''
+    password: '',
+    justdialProducts: []
   });
 
   const fetchUsers = useCallback(async () => {
@@ -80,6 +83,10 @@ export default function UsersScreen() {
     fetchUsers();
   }, [fetchUsers]);
 
+  useEffect(() => {
+    apiGet('/justdial/products').then(data => setProductOptions(data?.assignable || [])).catch(() => {});
+  }, []);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchUsers();
@@ -92,14 +99,15 @@ export default function UsersScreen() {
       email: '',
       phone: '',
       role: 'sales_executive',
-      password: ''
+      password: '',
+      justdialProducts: []
     });
     setModalVisible(true);
   };
 
   const openEditModal = (item) => {
     setEditingId(item.id);
-    setFormData({ name: item.name || '', email: item.email || '', phone: item.phone || '', role: item.role || 'sales_executive', password: '' });
+    setFormData({ name: item.name || '', email: item.email || '', phone: item.phone || '', role: item.role || 'sales_executive', password: '', justdialProducts: item.justdialProducts || [] });
     setModalVisible(true);
   };
 
@@ -113,15 +121,19 @@ export default function UsersScreen() {
       return;
     }
 
-    if (formData.password && formData.password.length < 12) {
-      Alert.alert('Validation Error', 'Password must be at least 12 characters.');
+    if (formData.password && formData.password.length < 6) {
+      Alert.alert('Validation Error', 'Password must be at least 6 characters.');
+      return;
+    }
+    if (formData.justdialProducts.length && !productOptions.length) {
+      Alert.alert('Unavailable', 'Justdial product options could not load. Please retry after the backend is ready.');
       return;
     }
 
     setSaving(true);
     try {
       if (editingId) {
-        await apiPut(`/users/${editingId}`, { name: formData.name, phone: formData.phone, role: formData.role });
+        await apiPut(`/users/${editingId}`, { name: formData.name, phone: formData.phone, role: formData.role, justdialProducts: formData.justdialProducts });
         if (formData.password) await apiPut(`/users/${editingId}/password`, { newPassword: formData.password });
       } else {
         await apiPost('/users', formData);
@@ -204,6 +216,9 @@ export default function UsersScreen() {
                 </View>
               </View>
 
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                Justdial: {['super_admin', 'director'].includes(item.role) ? 'All products' : item.justdialProducts?.length ? item.justdialProducts.join(', ') : 'No products assigned'}
+              </Text>
               {item.phone ? (
                 <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
                   <Phone size={12} color={colors.textMuted} />
@@ -294,6 +309,20 @@ export default function UsersScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Justdial enquiry products</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                {LEAD_ROLES.includes(formData.role) ? 'Select products this user can see. No selection means no Justdial enquiries.' : 'Product assignments require a Sales Manager or Sales Executive role to access Leads.'}
+              </Text>
+              <View style={styles.choiceRow}>
+                {productOptions.map(product => {
+                  const selected = formData.justdialProducts.includes(product);
+                  return <TouchableOpacity key={product} style={[styles.choiceChip, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.cardSecondary }]}
+                    onPress={() => setFormData(current => ({ ...current, justdialProducts: selected ? current.justdialProducts.filter(value => value !== product) : [...current.justdialProducts, product] }))}>
+                    <Text style={{ color: selected ? '#fff' : colors.text }}>{selected ? '✓ ' : ''}{product}</Text>
+                  </TouchableOpacity>;
+                })}
               </View>
 
               <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{editingId ? 'New Password (optional)' : 'Login Password *'}</Text>

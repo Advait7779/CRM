@@ -155,8 +155,8 @@ const RESOURCE_CONFIG = {
   },
   installations: {
     model: 'installations',
-    fields: ['type', 'customerId', 'customer', 'vehicle', 'imei', 'sim', 'installer', 'site', 'cameras', 'dvr', 'tech', 'domain', 'hosting', 'design', 'dev', 'goLive', 'date', 'status', 'reportPhoto', 'reportSignature', 'reportNotes'],
-    required: ['type', 'customerId'],
+    fields: ['type', 'customerId', 'customer', 'vehicle', 'imei', 'sim', 'phone', 'email', 'location', 'deviceType', 'installer', 'site', 'cameras', 'dvr', 'tech', 'domain', 'hosting', 'design', 'dev', 'goLive', 'date', 'status', 'reportNotes'],
+    required: ['type', 'customer'],
     roles: OPERATIONS,
     readRoles: [...OPERATIONS, ...SALES, ...SUPPORT]
   },
@@ -294,6 +294,20 @@ async function applyStableReferences(payload, model, db = prisma) {
   }
   // Models that have a customerId FK column in the DB
   const CUSTOMER_FK_MODELS = ['installations', 'inventoryTransactions', 'invoices', 'quotations', 'renewals', 'tickets'];
+  if (model === 'installations') {
+    if (!payload.customerId || payload.customerId === '') {
+      delete payload.customerId;
+      if (payload.customer) {
+        const existingCustomer = await db.customers.findFirst({
+          where: { name: { equals: String(payload.customer).trim(), mode: 'insensitive' } },
+          select: { id: true, name: true }
+        });
+        if (existingCustomer) {
+          payload.customerId = existingCustomer.id;
+        }
+      }
+    }
+  }
   if (payload.customerId !== undefined && CUSTOMER_FK_MODELS.includes(model)) {
     const customerId = Number(payload.customerId);
     const customer = Number.isInteger(customerId) && customerId > 0
@@ -570,6 +584,22 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     const where = {};
     if (routeName === 'tasks' && !MANAGEMENT.includes(req.user.role)) where.assignedUserId = req.user.id;
     if (routeName === 'leads') Object.assign(where, leadAccessWhere(req.user));
+    if (routeName === 'installations') {
+      if (req.user.role === 'gps_installer') {
+        where.type = 'GPS';
+        if (req.user.name) {
+          where.installer = { equals: req.user.name, mode: 'insensitive' };
+        }
+      } else if (req.user.role === 'cctv_technician') {
+        where.type = 'CCTV';
+        if (req.user.name) {
+          where.OR = [
+            { tech: { equals: req.user.name, mode: 'insensitive' } },
+            { installer: { equals: req.user.name, mode: 'insensitive' } }
+          ];
+        }
+      }
+    }
     if (req.query.customer && config.fields.includes('customer')) where.customer = req.query.customer;
     if (req.query.status) where.status = prepareData(config.model, { status: req.query.status }).status;
     const orderField = routeName === 'employees' ? 'name' : 'createdAt';
@@ -594,11 +624,23 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     if (routeName === 'tasks' && !MANAGEMENT.includes(req.user.role) && record.assignedUserId !== req.user.id) {
       return res.status(404).json({ message: 'Task not found.' });
     }
+    if (routeName === 'installations') {
+      if (req.user.role === 'gps_installer') {
+        const isAssigned = record.type === 'GPS' && record.installer?.toLowerCase() === req.user.name?.toLowerCase();
+        if (!isAssigned) return res.status(404).json({ message: 'Installation not found.' });
+      } else if (req.user.role === 'cctv_technician') {
+        const isAssigned = record.type === 'CCTV' && (record.tech?.toLowerCase() === req.user.name?.toLowerCase() || record.installer?.toLowerCase() === req.user.name?.toLowerCase());
+        if (!isAssigned) return res.status(404).json({ message: 'Installation not found.' });
+      }
+    }
     const compatibleRecord = (await restoreLegacyDecimalFields(config.model, [record]))[0];
     res.json(routeName === 'renewals' ? renewalWithComputedStatus(compatibleRecord) : compatibleRecord);
   }));
 
   router.post(`/${routeName}`, authMiddleware, checkRole(config.roles), asyncHandler(async (req, res) => {
+    if (routeName === 'installations' && (req.user.role === 'gps_installer' || req.user.role === 'cctv_technician')) {
+      return res.status(403).json({ message: 'Installers are not permitted to allocate new installations.' });
+    }
     const payload = cleanBody(req.body, config.fields);
     if (routeName === 'leads') {
       if (payload.source === 'Justdial') {
@@ -651,6 +693,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
       payload.amount = Math.round((subtotal + taxAmount) * 100) / 100;
     }
     if (routeName === 'installations') {
+      if (String(payload.status || '').toLowerCase() === 'completed') return res.status(400).json({ message: 'Use the proof form to complete an installation.' });
       if (payload.type) {
         const typeMap = {
           gps: 'GPS',
@@ -757,6 +800,9 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
   }));
 
   router.put(`/${routeName}/:id`, authMiddleware, checkRole(config.roles), asyncHandler(async (req, res) => {
+    if (routeName === 'installations' && ['gps_installer', 'cctv_technician'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Installers must submit the completion report to update a job.' });
+    }
     const delegate = prisma[config.model];
     const id = prismaId(config.model, req.params.id);
     const record = await delegate.findUnique({ where: { id }, ...(await compatibilitySelect(config.model)) });
@@ -825,6 +871,9 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
       payload.amount = Math.round((subtotal + taxAmount) * 100) / 100;
     }
     if (routeName === 'installations') {
+      if (String(payload.status || '').toLowerCase() === 'completed' && record.status !== 'Completed') {
+        return res.status(400).json({ message: 'Use the proof form to complete an installation.' });
+      }
       if (payload.type !== undefined) {
         const typeMap = {
           gps: 'GPS',
@@ -923,6 +972,9 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     const id = prismaId(config.model, req.params.id);
     const record = await delegate.findUnique({ where: { id }, ...(await compatibilitySelect(config.model)) });
     if (!record) return res.status(404).json({ message: `${routeName.slice(0, -1)} not found.` });
+    if (routeName === 'installations' && (req.user.role === 'gps_installer' || req.user.role === 'cctv_technician')) {
+      return res.status(403).json({ message: 'Installers are not permitted to delete installations.' });
+    }
     if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     if (routeName === 'customers') {
       const relatedCount = await Promise.all([
@@ -1466,7 +1518,7 @@ const upload = multer({
       callback(null, `${crypto.randomUUID()}${ext}`);
     }
   }),
-  limits: { fileSize: 50 * 1024 * 1024, files: 5 },
+  limits: { fileSize: 50 * 1024 * 1024, files: 6 },
   fileFilter: (req, file, callback) => {
     callback(null, true);
   }
@@ -1518,16 +1570,39 @@ router.delete('/documents/:id', authMiddleware, checkRole(SALES), asyncHandler(a
   res.json({ message: 'Document deleted.' });
 }));
 
+function canAccessInstallationProof(user, installation) {
+  if (ADMIN.includes(user.role) || user.role === 'installation_manager') return true;
+  const name = String(user.name || '').trim().toLowerCase();
+  if (!name) return false;
+  if (user.role === 'gps_installer') {
+    return installation.type === 'GPS' && String(installation.installer || '').trim().toLowerCase() === name;
+  }
+  if (user.role === 'cctv_technician') {
+    return installation.type === 'CCTV' && [installation.tech, installation.installer]
+      .some(assignee => String(assignee || '').trim().toLowerCase() === name);
+  }
+  return false;
+}
+
 router.post(
   '/installations/:id/proof',
   authMiddleware,
-  checkRole(OPERATIONS),
-  upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'signature', maxCount: 1 }]),
+  checkRole([...ADMIN, 'installation_manager', 'gps_installer', 'cctv_technician']),
+  upload.fields([
+    { name: 'photos', maxCount: 5 },
+    { name: 'photo', maxCount: 5 },
+    { name: 'signature', maxCount: 1 }
+  ]),
   asyncHandler(async (req, res) => {
     const uploadedFiles = Object.values(req.files || {}).flat();
     try { for (const file of uploadedFiles) validateUploadedFile(file); } catch (error) {
       for (const file of uploadedFiles) if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       throw error;
+    }
+    const proofImages = [...(req.files?.photos || []), ...(req.files?.photo || [])];
+    if (proofImages.some(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png', '.webp'].includes(path.extname(file.originalname).toLowerCase()))) {
+      for (const file of uploadedFiles) fs.unlink(file.path, () => {});
+      return res.status(400).json({ message: 'Proof images must be JPEG, PNG, or WebP files.' });
     }
     const installation = await prisma.installations.findUnique({ where: { id: Number(req.params.id) } });
     if (!installation) {
@@ -1536,12 +1611,28 @@ router.post(
       }
       return res.status(404).json({ message: 'Installation not found.' });
     }
+    if (!canAccessInstallationProof(req.user, installation)) {
+      for (const file of uploadedFiles) fs.unlink(file.path, () => {});
+      return res.status(404).json({ message: 'Installation not found.' });
+    }
+    if (installation.status === 'Completed') {
+      for (const file of uploadedFiles) fs.unlink(file.path, () => {});
+      return res.status(409).json({ message: 'This installation is already completed.' });
+    }
     const payload = cleanBody(req.body, ['imei', 'sim', 'cameras', 'dvr', 'reportNotes']);
     if (payload.cameras !== undefined) {
       payload.cameras = payload.cameras === '' || payload.cameras === null ? 0 : Number.parseInt(payload.cameras, 10) || 0;
     }
     payload.status = 'Completed';
-    if (req.files?.photo?.[0]) payload.reportPhoto = req.files.photo[0].filename;
+    const photoFiles = proofImages;
+    if (photoFiles.length !== 5) {
+      for (const file of uploadedFiles) fs.unlink(file.path, () => {});
+      return res.status(400).json({ message: 'Five proof images are required to complete a job.' });
+    }
+
+    if (photoFiles.length > 0) {
+      payload.reportPhoto = JSON.stringify(photoFiles.map((f) => f.filename));
+    }
     if (req.files?.signature?.[0]) payload.reportSignature = req.files.signature[0].filename;
     let updatedInstallation;
     try {
@@ -1557,20 +1648,40 @@ router.post(
       payload.reportPhoto && installation.reportPhoto,
       payload.reportSignature && installation.reportSignature
     ].filter(Boolean);
-    for (const storedName of replacedFiles) fs.unlink(path.join(uploadDir, path.basename(storedName)), () => {});
+    for (const storedName of replacedFiles) {
+      try {
+        const parsed = JSON.parse(storedName);
+        if (Array.isArray(parsed)) {
+          for (const f of parsed) fs.unlink(path.join(uploadDir, path.basename(f)), () => {});
+          continue;
+        }
+      } catch {}
+      fs.unlink(path.join(uploadDir, path.basename(storedName)), () => {});
+    }
     await audit(req, 'complete', 'installations', installation.id, {
-      photo: Boolean(payload.reportPhoto),
+      photoCount: photoFiles.length,
       signature: Boolean(payload.reportSignature)
     });
     res.json(updatedInstallation);
   })
 );
 
-router.get('/installations/:id/proof/:kind', authMiddleware, checkRole([...OPERATIONS, ...SUPPORT]), asyncHandler(async (req, res) => {
+router.get('/installations/:id/proof/:kind', authMiddleware, checkRole([...OPERATIONS, ...SALES, ...SUPPORT]), asyncHandler(async (req, res) => {
   const installation = await prisma.installations.findUnique({ where: { id: Number(req.params.id) } });
   if (!installation) return res.status(404).json({ message: 'Installation not found.' });
-  const storedName = req.params.kind === 'signature' ? installation.reportSignature : installation.reportPhoto;
+  if ((req.user.role === 'gps_installer' || req.user.role === 'cctv_technician') && !canAccessInstallationProof(req.user, installation)) {
+    return res.status(404).json({ message: 'Installation not found.' });
+  }
+  if (!['photo', 'signature'].includes(req.params.kind)) return res.status(400).json({ message: 'Invalid proof type.' });
+  let storedName = req.params.kind === 'signature' ? installation.reportSignature : installation.reportPhoto;
   if (!storedName) return res.status(404).json({ message: 'Proof file not found.' });
+  try {
+    const parsed = JSON.parse(storedName);
+    if (Array.isArray(parsed) && parsed.length) {
+      const idx = Number.parseInt(req.query.index || '0', 10) || 0;
+      storedName = parsed[idx] || parsed[0];
+    }
+  } catch {}
   const filePath = path.join(uploadDir, path.basename(storedName));
   if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Stored file is missing.' });
   res.download(filePath);

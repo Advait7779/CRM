@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { apiGet, apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
+import { apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
@@ -201,8 +200,6 @@ export default function LeadsPage() {
       toast.error(err.message)
     }
   }
-
-  const navigate = useNavigate()
 
   const handleConfirmConvert = async () => {
     if (!confirmConvertLead) return

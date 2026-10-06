@@ -134,6 +134,10 @@ model Installations {
   vehicle         String?                    @db.VarChar(255)
   imei            String?                    @db.VarChar(255)
   sim             String?                    @db.VarChar(255)
+  phone           String?                    @db.VarChar(255)
+  email           String?                    @db.VarChar(255)
+  location        String?                    @db.VarChar(255)
+  deviceType      String?                    @db.VarChar(255)
   installer       String?                    @db.VarChar(255)
   site            String?
   cameras         Int?                       @default(0)
@@ -146,7 +150,7 @@ model Installations {
   goLive          DateTime?                  @db.Date
   date            DateTime?                  @db.Date
   status          enum_Installations_status? @default(Pending)
-  reportPhoto     String?                    @db.VarChar(255)
+  reportPhoto     String?
   reportSignature String?                    @db.VarChar(255)
   reportNotes     String?
   createdAt       DateTime                   @db.Timestamptz(6)

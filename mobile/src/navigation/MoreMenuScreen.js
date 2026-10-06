@@ -12,9 +12,7 @@ import { useNotifications } from '../context/NotificationContext';
 import Header from '../components/common/Header';
 import { canAccessScreen } from '../config/permissions';
 import {
-  Target,
   RefreshCw,
-  FileCheck,
   CreditCard,
   Package,
   Wrench,
@@ -22,6 +20,7 @@ import {
   Users,
   Calendar,
   ShieldCheck,
+  Settings,
   User,
   Search,
   Bell,
@@ -64,6 +63,7 @@ export default function MoreMenuScreen({ navigation }) {
         { title: 'Accounts & Billing', desc: 'Invoices & GST collection', icon: CreditCard, color: '#10b981', screen: 'Accounts' },
         { title: 'Employees Directory', desc: 'Staff directory & payroll', icon: Users, color: '#6366f1', screen: 'Employees' },
         { title: 'User Management', desc: 'System roles & access control', icon: ShieldCheck, color: '#dc2626', screen: 'Users' },
+        { title: 'Notification URLs', desc: 'Customer and Justdial message templates', icon: Settings, color: '#6366f1', screen: 'NotificationSettings' },
         { title: 'My Profile & Settings', desc: 'Theme, password & API server', icon: User, color: colors.primary, screen: 'Profile' }
       ]
     }

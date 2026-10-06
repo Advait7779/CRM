@@ -3,10 +3,10 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiGet } from '../utils/api'
 import {
-  LayoutDashboard, Users, UserCheck, FileText, Wrench, CreditCard,
-  RefreshCw, HeadphonesIcon, Package, UserCog,
+  LayoutDashboard, Users, UserCheck, Wrench, CreditCard,
+  RefreshCw, Package, UserCog,
   CheckSquare, Calendar, ChevronDown, ChevronRight,
-  Zap, Shield, X, MessageSquare, ClipboardCheck
+  Shield, X, MessageSquare, ClipboardCheck
 } from 'lucide-react'
 
 const NAV_ITEMS = [

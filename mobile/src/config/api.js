@@ -210,4 +210,4 @@ export const apiGet = (path) => apiRequest(path, { method: 'GET' });
 export const apiPost = (path, body) => apiRequest(path, { method: 'POST', body });
 export const apiPut = (path, body) => apiRequest(path, { method: 'PUT', body });
 export const apiDelete = (path) => apiRequest(path, { method: 'DELETE' });
-export const apiUpload = (path, formData) => apiRequest(path, { method: 'POST', body: formData, isFormData: true });
+export const apiUpload = (path, formData, options = {}) => apiRequest(path, { method: 'POST', body: formData, isFormData: true, ...options });

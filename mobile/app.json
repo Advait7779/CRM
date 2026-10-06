@@ -22,7 +22,11 @@
         "foregroundImage": "../client/public/logo.png",
         "backgroundColor": "#f8fafc"
       },
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "plugins": [
       [
@@ -52,6 +56,11 @@
           "locationWhenInUsePermission": "Allow Service CRM to use your location when you check in or check out at a customer site."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "28a83445-95e8-4d7a-b2e7-16744619a544"
+      }
+    }
   }
 }

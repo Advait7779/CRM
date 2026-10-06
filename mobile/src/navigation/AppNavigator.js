@@ -23,6 +23,7 @@ import MyWorkScreen from '../screens/employees/MyWorkScreen';
 import CalendarScreen from '../screens/calendar/CalendarScreen';
 import UsersScreen from '../screens/users/UsersScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import NotificationSettingsScreen from '../screens/settings/NotificationSettingsScreen';
 import GlobalSearchScreen from '../screens/system/GlobalSearchScreen';
 import NotificationsScreen from '../screens/system/NotificationsScreen';
 
@@ -74,6 +75,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Calendar" component={CalendarScreen} />
           <Stack.Screen name="Users" component={UsersScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
           <Stack.Screen
             name="GlobalSearch"
             component={GlobalSearchScreen}

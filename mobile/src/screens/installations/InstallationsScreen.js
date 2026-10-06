@@ -10,9 +10,12 @@ import {
   ScrollView,
   Alert
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { apiGet, apiGetAll, apiPost, apiPut } from '../../config/api';
+import { apiGetAll, apiPost, apiPut, apiUpload, getAuthToken, getServerUrl } from '../../config/api';
 import { canWriteResource } from '../../config/permissions';
 import Header from '../../components/common/Header';
 import SearchInput from '../../components/common/SearchInput';
@@ -27,20 +30,33 @@ import {
   User,
   Truck,
   Camera,
-  Globe,
   X
 } from 'lucide-react-native';
 
-const TYPES = ['All', 'gps', 'cctv', 'web'];
+const TYPES = ['All', 'gps', 'cctv'];
+const proofCount = value => {
+  if (!value) return 0;
+  try {
+    const photos = JSON.parse(value);
+    if (Array.isArray(photos)) return photos.length;
+  } catch {}
+  return 1;
+};
+const proofExtension = (value, index) => {
+  try {
+    const names = JSON.parse(value);
+    const name = Array.isArray(names) ? names[index] : value;
+    return /\.(png|webp|jpe?g)$/i.exec(name)?.[1]?.toLowerCase() || 'jpg';
+  } catch { return /\.(png|webp|jpe?g)$/i.exec(value)?.[1]?.toLowerCase() || 'jpg'; }
+};
 
 export default function InstallationsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   const canWrite = canWriteResource(user?.role, 'installations');
+  const canComplete = ['super_admin', 'director', 'installation_manager', 'gps_installer', 'cctv_technician'].includes(user?.role);
 
   const [installations, setInstallations] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -50,6 +66,13 @@ export default function InstallationsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [proofJob, setProofJob] = useState(null);
+  const [proofMode, setProofMode] = useState('view');
+  const [proofPhotos, setProofPhotos] = useState([null, null, null, null, null]);
+  const [proofNotes, setProofNotes] = useState('');
+  const [proofCameras, setProofCameras] = useState('4');
+  const [proofDvr, setProofDvr] = useState('');
+  const [submittingProof, setSubmittingProof] = useState(false);
   const [formData, setFormData] = useState({
     type: 'gps',
     customerId: '',
@@ -57,11 +80,14 @@ export default function InstallationsScreen() {
     vehicle: '',
     imei: '',
     sim: '',
+    phone: '',
+    email: '',
+    location: '',
+    deviceType: '',
     installer: '',
     site: '',
+    dvr: '',
     cameras: '4',
-    domain: '',
-    hosting: '',
     date: new Date().toISOString().split('T')[0],
     status: 'Pending',
     reportNotes: ''
@@ -69,20 +95,15 @@ export default function InstallationsScreen() {
 
   const fetchInstallations = useCallback(async () => {
     try {
-      const [jobs, customerRows, staffRows] = await Promise.all([
-        apiGetAll('/installations'), apiGetAll('/customers'),
-        canWrite ? apiGet('/installation-staff').catch(() => []) : Promise.resolve([])
-      ]);
+      const jobs = await apiGetAll('/installations');
       setInstallations(Array.isArray(jobs) ? jobs : []);
-      setCustomers(Array.isArray(customerRows) ? customerRows : []);
-      setStaff(Array.isArray(staffRows) ? staffRows : []);
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to fetch installations');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [canWrite]);
+  }, []);
 
   useEffect(() => {
     fetchInstallations();
@@ -102,11 +123,14 @@ export default function InstallationsScreen() {
       vehicle: '',
       imei: '',
       sim: '',
+      phone: '',
+      email: '',
+      location: '',
+      deviceType: '',
       installer: user?.name || '',
       site: '',
+      dvr: '',
       cameras: '4',
-      domain: '',
-      hosting: '',
       date: new Date().toISOString().split('T')[0],
       status: 'Pending',
       reportNotes: ''
@@ -117,7 +141,7 @@ export default function InstallationsScreen() {
   const openEditModal = (item) => {
     setEditingId(item.id);
     const rawType = (item.type || 'gps').toLowerCase();
-    const normalizedType = rawType === 'website' ? 'web' : rawType;
+    const normalizedType = rawType === 'gps' ? 'gps' : 'cctv';
     setFormData({
       type: normalizedType,
       customerId: String(item.customerId || ''),
@@ -125,11 +149,14 @@ export default function InstallationsScreen() {
       vehicle: item.vehicle || '',
       imei: item.imei || '',
       sim: item.sim || '',
+      phone: item.phone || '',
+      email: item.email || '',
+      location: item.location || '',
+      deviceType: item.deviceType || '',
       installer: item.installer || '',
       site: item.site || '',
+      dvr: item.dvr || '',
       cameras: String(item.cameras != null ? item.cameras : '4'),
-      domain: item.domain || '',
-      hosting: item.hosting || '',
       date: String(item.date || '').slice(0, 10),
       status: item.status || 'Pending',
       reportNotes: item.reportNotes || ''
@@ -138,9 +165,8 @@ export default function InstallationsScreen() {
   };
 
   const handleSave = async () => {
-    const selectedCustomer = customers.find((customer) => String(customer.id) === formData.customerId);
-    if (!selectedCustomer) {
-      Alert.alert('Validation Error', 'Select a customer.');
+    if (!formData.customer?.trim()) {
+      Alert.alert('Validation Error', 'Enter a customer name.');
       return;
     }
 
@@ -148,9 +174,7 @@ export default function InstallationsScreen() {
     try {
       const typeMap = {
         gps: 'GPS',
-        cctv: 'CCTV',
-        web: 'Website',
-        website: 'Website'
+        cctv: 'CCTV'
       };
       const normalizedType = typeMap[String(formData.type).toLowerCase()] || 'GPS';
       const cameras = normalizedType === 'CCTV' ? (Number.parseInt(formData.cameras, 10) || 0) : 0;
@@ -159,9 +183,11 @@ export default function InstallationsScreen() {
         ...formData,
         type: normalizedType,
         cameras,
-        customerId: Number(formData.customerId),
-        customer: selectedCustomer.company || selectedCustomer.name || formData.customer
+        customer: formData.customer.trim(),
+        installer: formData.installer?.trim() || '',
+        ...(normalizedType === 'CCTV' ? { tech: formData.installer?.trim() || '' } : {})
       };
+      delete payload.customerId;
 
       if (editingId) {
         await apiPut(`/installations/${editingId}`, payload);
@@ -179,18 +205,81 @@ export default function InstallationsScreen() {
     }
   };
 
+  const openProof = (item) => {
+    setProofJob(item);
+    setProofMode(item.status === 'Completed' ? 'view' : 'submit');
+    setProofPhotos([null, null, null, null, null]);
+    setProofNotes(item.reportNotes || '');
+    setProofCameras(String(item.cameras || 4));
+    setProofDvr(item.dvr || '');
+  };
+
+  const pickProofPhoto = async (index) => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') return Alert.alert('Permission needed', 'Allow photo access to upload completion proof.');
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+      if (result.canceled || !result.assets?.[0]) return;
+      setProofPhotos(current => current.map((photo, position) => position === index ? result.assets[0] : photo));
+    } catch (error) { Alert.alert('Photo error', error.message); }
+  };
+
+  const submitProof = async () => {
+    if (!proofJob || proofPhotos.some(photo => !photo)) return Alert.alert('Five images required', 'Please select all five proof images.');
+    if (proofJob.type === 'CCTV' && (!Number(proofCameras) || !proofDvr.trim())) {
+      return Alert.alert('Details required', 'Enter the camera count and NVR/DVR serial number.');
+    }
+    const form = new FormData();
+    form.append('reportNotes', proofNotes);
+    if (proofJob.type === 'CCTV') {
+      form.append('cameras', proofCameras);
+      form.append('dvr', proofDvr.trim());
+    }
+    proofPhotos.forEach((photo, index) => form.append('photos', {
+      uri: photo.uri,
+      name: photo.fileName || `proof_${index + 1}.jpg`,
+      type: photo.mimeType || 'image/jpeg'
+    }));
+    setSubmittingProof(true);
+    try {
+      await apiUpload(`/installations/${proofJob.id}/proof`, form, { timeoutMs: 120000 });
+      setProofJob(null);
+      await fetchInstallations();
+      Alert.alert('Completed', 'The five proof images and completion report were saved.');
+    } catch (error) { Alert.alert('Completion failed', error.message); }
+    finally { setSubmittingProof(false); }
+  };
+
+  const downloadProof = async (index) => {
+    try {
+      const [baseUrl, token] = await Promise.all([getServerUrl(), getAuthToken()]);
+      const url = `${baseUrl}/installations/${proofJob.id}/proof/photo?index=${index}`;
+      const localPath = `${FileSystem.documentDirectory}installation-${proofJob.id}-proof-${index + 1}.${proofExtension(proofJob.reportPhoto, index)}`;
+      const result = await FileSystem.downloadAsync(url, localPath, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (result.status !== 200) throw new Error('Could not download the proof image.');
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(result.uri);
+      else Alert.alert('Saved', result.uri);
+    } catch (error) { Alert.alert('Download failed', error.message); }
+  };
+
   const filtered = installations.filter((i) => {
+    if (user?.role === 'gps_installer') {
+      if (i.type !== 'GPS') return false;
+      if (user?.name && (i.installer || '').trim().toLowerCase() !== user.name.trim().toLowerCase()) return false;
+    } else if (user?.role === 'cctv_technician') {
+      if (i.type !== 'CCTV') return false;
+      if (user?.name && ![i.tech, i.installer].some(value => String(value || '').trim().toLowerCase() === user.name.trim().toLowerCase())) return false;
+    }
+
     const matchSearch =
       (i.customer || '').toLowerCase().includes(search.toLowerCase()) ||
       (i.vehicle || '').toLowerCase().includes(search.toLowerCase()) ||
       (i.installer || '').toLowerCase().includes(search.toLowerCase()) ||
-      (i.site || '').toLowerCase().includes(search.toLowerCase()) ||
-      (i.domain || '').toLowerCase().includes(search.toLowerCase());
+      (i.site || '').toLowerCase().includes(search.toLowerCase());
 
     const itemType = (i.type || '').toLowerCase();
     const filterType = selectedType.toLowerCase();
-    const matchType = filterType === 'all' ||
-      (filterType === 'web' ? (itemType === 'web' || itemType === 'website') : itemType === filterType);
+    const matchType = filterType === 'all' || itemType === filterType;
     return matchSearch && matchType;
   });
 
@@ -266,10 +355,9 @@ export default function InstallationsScreen() {
           }
           renderItem={({ item }) => {
             const rawType = (item.type || 'gps').toLowerCase();
-            const displayType = rawType === 'website' || rawType === 'web' ? 'WEB' : rawType.toUpperCase();
+            const displayType = rawType.toUpperCase();
             const isGps = rawType === 'gps';
             const isCctv = rawType === 'cctv';
-            const isWeb = rawType === 'web' || rawType === 'website';
             return (
               <View style={[styles.instCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.cardHeader}>
@@ -299,13 +387,6 @@ export default function InstallationsScreen() {
                   </View>
                 ) : null}
 
-                {isWeb && item.domain ? (
-                  <View style={styles.metaRow}>
-                    <Globe size={14} color="#8b5cf6" />
-                    <Text style={[styles.metaText, { color: colors.text }]}>{item.domain}</Text>
-                  </View>
-                ) : null}
-
                 <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
                   {item.installer ? (
                     <View style={styles.techRow}>
@@ -321,7 +402,12 @@ export default function InstallationsScreen() {
                         <Text style={[styles.techText, { color: colors.textMuted }]}>{String(item.date).slice(0, 10)}</Text>
                       </View>
                     ) : null}
-                    {canWrite ? (
+                    {(item.status === 'Completed' || canComplete) && (isGps || isCctv) ? (
+                      <TouchableOpacity style={[styles.editJobBtn, { borderColor: colors.primary }]} onPress={() => openProof(item)} accessibilityRole="button" accessibilityLabel={`${item.status === 'Completed' ? 'View proof for' : 'Complete'} installation for ${item.customer}`}>
+                        <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{item.status === 'Completed' ? `Proof (${proofCount(item.reportPhoto)})` : 'Complete'}</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {canWrite && item.status !== 'Completed' ? (
                       <TouchableOpacity style={[styles.editJobBtn, { borderColor: colors.primary }]} onPress={() => openEditModal(item)} accessibilityRole="button" accessibilityLabel={`Edit installation for ${item.customer}`}>
                         <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>Edit</Text>
                       </TouchableOpacity>
@@ -352,7 +438,7 @@ export default function InstallationsScreen() {
           >
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Installation Type</Text>
             <View style={styles.choiceRow}>
-              {['gps', 'cctv', 'web'].map((t, i) => (
+              {['gps', 'cctv'].map((t, i) => (
                 <TouchableOpacity
                   key={i}
                   style={[
@@ -372,17 +458,27 @@ export default function InstallationsScreen() {
             </View>
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Customer *</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorRow}>
-              {customers.map((customer) => {
-                const selected = String(customer.id) === formData.customerId;
-                const label = customer.company || customer.name;
-                return (
-                  <TouchableOpacity key={customer.id} style={[styles.selectorChip, { backgroundColor: selected ? colors.primary : colors.cardSecondary, borderColor: selected ? colors.primary : colors.border }]} onPress={() => setFormData({ ...formData, customerId: String(customer.id), customer: label || '' })} accessibilityRole="radio" accessibilityState={{ checked: selected }}>
-                    <Text style={{ color: selected ? '#fff' : colors.text, fontWeight: '600' }}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <TextInput
+              style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+              placeholder="Enter customer name"
+              placeholderTextColor={colors.textMuted}
+              value={formData.customer}
+              onChangeText={(t) => setFormData({ ...formData, customer: t })}
+            />
+
+            {formData.type === 'gps' && [
+              ['Customer Phone', 'phone', 'phone-pad'],
+              ['Customer Email', 'email', 'email-address'],
+              ['Installation Location', 'location', 'default'],
+              ['Device Type', 'deviceType', 'default']
+            ].map(([label, key, keyboardType]) => (
+              <React.Fragment key={key}>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
+                <TextInput style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                  placeholder={label} placeholderTextColor={colors.textMuted} value={formData[key]}
+                  keyboardType={keyboardType} onChangeText={value => setFormData(current => ({ ...current, [key]: value }))} />
+              </React.Fragment>
+            ))}
 
             {formData.type === 'gps' && (
               <>
@@ -426,47 +522,21 @@ export default function InstallationsScreen() {
                   onChangeText={(t) => setFormData({ ...formData, cameras: t })}
                   keyboardType="numeric"
                 />
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>NVR/DVR Specification</Text>
+                <TextInput style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                  placeholder="NVR/DVR details" placeholderTextColor={colors.textMuted} value={formData.dvr}
+                  onChangeText={value => setFormData(current => ({ ...current, dvr: value }))} />
               </>
             )}
 
-            {(formData.type === 'web' || formData.type === 'website') && (
-              <>
-                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Domain Name</Text>
-                <TextInput
-                  style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-                  placeholder="e.g. acme-corp.com"
-                  placeholderTextColor={colors.textMuted}
-                  value={formData.domain}
-                  onChangeText={(t) => setFormData({ ...formData, domain: t })}
-                  autoCapitalize="none"
-                />
-
-                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Hosting Provider / Details</Text>
-                <TextInput
-                  style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-                  placeholder="e.g. AWS / Hostinger VPS"
-                  placeholderTextColor={colors.textMuted}
-                  value={formData.hosting}
-                  onChangeText={(t) => setFormData({ ...formData, hosting: t })}
-                />
-              </>
-            )}
-
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Assigned Technician</Text>
-            {staff.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorRow}>
-                {staff.map((person) => {
-                  const selected = person.name === formData.installer;
-                  return (
-                    <TouchableOpacity key={person.id || person.name} style={[styles.selectorChip, { backgroundColor: selected ? colors.primary : colors.cardSecondary, borderColor: selected ? colors.primary : colors.border }]} onPress={() => setFormData({ ...formData, installer: person.name })} accessibilityRole="radio" accessibilityState={{ checked: selected }}>
-                      <Text style={{ color: selected ? '#fff' : colors.text, fontWeight: '600' }}>{person.name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            ) : (
-              <TextInput style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]} placeholder="Technician name" placeholderTextColor={colors.textMuted} value={formData.installer} onChangeText={(t) => setFormData({ ...formData, installer: t })} />
-            )}
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Assigned Technician / Installer</Text>
+            <TextInput
+              style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+              placeholder="Enter technician / installer name"
+              placeholderTextColor={colors.textMuted}
+              value={formData.installer}
+              onChangeText={(t) => setFormData({ ...formData, installer: t })}
+            />
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Scheduled Date (YYYY-MM-DD)</Text>
             <TextInput
@@ -506,6 +576,59 @@ export default function InstallationsScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
+      </AnimatedModal>
+      <AnimatedModal visible={Boolean(proofJob)} onRequestClose={() => setProofJob(null)}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{proofMode === 'view' ? 'Completion Proof' : 'Job Completion & Proof'}</Text>
+            <TouchableOpacity onPress={() => setProofJob(null)}><X size={20} color={colors.textMuted} /></TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalForm} contentContainerStyle={styles.modalFormContent} keyboardShouldPersistTaps="handled">
+            <Text style={{ color: colors.textSecondary }}>{proofJob?.customer} · {proofJob?.vehicle || proofJob?.site || proofJob?.type}</Text>
+            {proofMode === 'view' ? (
+              <>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Job Notes / Remarks</Text>
+                <Text style={{ color: colors.text }}>{proofJob?.reportNotes || 'No remarks entered.'}</Text>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Proof Images</Text>
+                {proofCount(proofJob?.reportPhoto) ? Array.from({ length: proofCount(proofJob?.reportPhoto) }, (_, index) => (
+                  <TouchableOpacity key={index} style={[styles.choiceChip, { borderColor: colors.primary, marginBottom: 8 }]} onPress={() => downloadProof(index)}>
+                    <Text style={{ color: colors.primary }}>Open / share image {index + 1}</Text>
+                  </TouchableOpacity>
+                )) : <Text style={{ color: colors.textMuted }}>No images saved for this older record.</Text>}
+              </>
+            ) : (
+              <>
+                {proofJob?.type === 'CCTV' ? (
+                  <>
+                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Cameras Installed *</Text>
+                    <TextInput style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                      keyboardType="numeric" value={proofCameras} onChangeText={setProofCameras} />
+                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>NVR/DVR Serial Number *</Text>
+                    <TextInput style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                      value={proofDvr} onChangeText={setProofDvr} />
+                  </>
+                ) : null}
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Proof Images · {proofPhotos.filter(Boolean).length}/5</Text>
+                {proofPhotos.map((photo, index) => (
+                  <View key={index} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <TouchableOpacity style={[styles.choiceChip, { borderColor: colors.primary, flex: 1 }]} onPress={() => pickProofPhoto(index)}>
+                      <Text style={{ color: colors.primary }} numberOfLines={1}>{photo ? photo.fileName || `Image ${index + 1} selected` : `+ Select image ${index + 1}`}</Text>
+                    </TouchableOpacity>
+                    {photo ? <TouchableOpacity onPress={() => setProofPhotos(current => current.map((value, position) => position === index ? null : value))}><X size={18} color={colors.danger} /></TouchableOpacity> : null}
+                  </View>
+                ))}
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Job Notes / Remarks</Text>
+                <TextInput style={[styles.formInput, styles.textArea, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                  value={proofNotes} onChangeText={setProofNotes} multiline placeholder="Work completed and verified..." placeholderTextColor={colors.textMuted} />
+              </>
+            )}
+          </ScrollView>
+          {proofMode === 'submit' ? <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+            <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={submitProof} disabled={submittingProof}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>{submittingProof ? 'Submitting...' : 'Submit Completion Report'}</Text>
+            </TouchableOpacity>
+          </View> : null}
         </View>
       </AnimatedModal>
     </View>

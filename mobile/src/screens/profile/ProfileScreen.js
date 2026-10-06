@@ -66,8 +66,8 @@ export default function ProfileScreen() {
       Alert.alert('Validation Error', 'Please fill in all password fields.');
       return;
     }
-    if (newPassword.length < 12) {
-      Alert.alert('Validation Error', 'New password must be at least 12 characters.');
+    if (newPassword.length < 6) {
+      Alert.alert('Validation Error', 'New password must be at least 6 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
