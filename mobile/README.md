@@ -39,7 +39,7 @@ npx expo start
 1. Connect your phone to the **same Wi-Fi network** as your computer.
 2. Open the **Expo Go** app on your phone.
 3. Scan the QR code shown in your terminal.
-4. On the login screen, if connecting via Wi-Fi, tap **"Server: ..."** at the bottom and enter your PC's IP address (e.g. `http://192.168.1.100:5001/api`).
+4. On the login screen, tap **Server Settings** and enter your PC's API address (e.g. `http://192.168.1.100:5001/api`). Production APKs use `https://crm.advaitdigital.co.in/api` by default; Server Settings can override it.
 
 ---
 

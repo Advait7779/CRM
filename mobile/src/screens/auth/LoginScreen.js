@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert
+  Alert,
+  Modal
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Shield, Lock, Mail, Eye, EyeOff } from 'lucide-react-native';
+import { getServerUrl, setServerUrl, testServerConnection } from '../../config/api';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -23,6 +25,32 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [serverModalOpen, setServerModalOpen] = useState(false);
+  const [serverUrl, setLocalServerUrl] = useState('');
+  const [savingServer, setSavingServer] = useState(false);
+
+  useEffect(() => {
+    getServerUrl().then(setLocalServerUrl);
+  }, []);
+
+  const handleSaveServer = async () => {
+    if (!serverUrl.trim()) {
+      Alert.alert('Server URL required', 'Enter the HTTPS address of your CRM server.');
+      return;
+    }
+    setSavingServer(true);
+    try {
+      await testServerConnection(serverUrl);
+      const saved = await setServerUrl(serverUrl);
+      setLocalServerUrl(saved);
+      setServerModalOpen(false);
+      Alert.alert('Connected', 'API server saved. You can now sign in.');
+    } catch (error) {
+      Alert.alert('Connection Failed', error.message || 'Could not reach the CRM server.');
+    } finally {
+      setSavingServer(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -151,8 +179,43 @@ export default function LoginScreen() {
               <Text style={styles.loginBtnText}>Sign In to Dashboard</Text>
             )}
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.serverSettingsBtn}
+            onPress={() => setServerModalOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Server Settings"
+          >
+            <Text style={[styles.serverSettingsText, { color: colors.primary }]}>Server Settings</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
+      <Modal visible={serverModalOpen} transparent animationType="fade" onRequestClose={() => setServerModalOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.serverModal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>API Server URL</Text>
+            <Text style={[styles.modalHint, { color: colors.textMuted }]}>Enter your CRM website address or its API URL.</Text>
+            <TextInput
+              style={[styles.serverInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+              value={serverUrl}
+              onChangeText={setLocalServerUrl}
+              placeholder="https://crm.advaitdigital.co.in"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              accessibilityLabel="API server URL"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setServerModalOpen(false)} disabled={savingServer} style={styles.modalAction}>
+                <Text style={{ color: colors.textSecondary }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSaveServer} disabled={savingServer} style={[styles.modalAction, { backgroundColor: colors.primary }]}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>{savingServer ? 'Testing...' : 'Test & Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -302,5 +365,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
-  }
+  },
+  serverSettingsBtn: { alignItems: 'center', marginTop: 16, paddingVertical: 8 },
+  serverSettingsText: { fontSize: 12, fontWeight: '600' },
+  modalBackdrop: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.6)', padding: 24 },
+  serverModal: { borderRadius: 18, borderWidth: 1, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '700' },
+  modalHint: { fontSize: 13, marginTop: 8, marginBottom: 16 },
+  serverInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 48, fontSize: 13 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
+  modalAction: { minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 10, padding: 12 },
 });

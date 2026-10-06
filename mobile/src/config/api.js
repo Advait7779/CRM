@@ -7,6 +7,7 @@ const REQUEST_TIMEOUT_MS = 20000;
 const SERVER_URL_KEY = 'crm_server_url';
 const TOKEN_KEY = 'crm_auth_token';
 const USER_KEY = 'crm_auth_user';
+const PRODUCTION_SERVER_URL = 'https://crm.advaitdigital.co.in/api';
 let unauthorizedHandler = null;
 
 function normalizeServerUrl(url) {
@@ -25,7 +26,7 @@ function getDevelopmentServerUrl() {
 }
 
 export const DEFAULT_SERVER_URL = normalizeServerUrl(
-  process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? getDevelopmentServerUrl() : '')
+  process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? getDevelopmentServerUrl() : PRODUCTION_SERVER_URL)
 );
 
 export function registerUnauthorizedHandler(handler) {
