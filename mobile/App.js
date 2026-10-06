@@ -11,7 +11,8 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans/700Bold';
 import { PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans/800ExtraBold';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
-import { AuthProvider } from './src/context/AuthContext';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { canAccessScreen } from './src/config/permissions';
 import { NotificationProvider, useNotifications } from './src/context/NotificationContext';
 import { SidebarProvider } from './src/context/SidebarContext';
 import NotificationToast from './src/components/common/NotificationToast';
@@ -35,6 +36,7 @@ const LINK_SCREENS = {
 
 function NotificationToastWrapper() {
   const { toastNotification, dismissToast, markRead } = useNotifications();
+  const { user } = useAuth();
   if (!toastNotification) return null;
 
   const handlePress = () => {
@@ -45,11 +47,11 @@ function NotificationToastWrapper() {
     }
     if (navigationRef.isReady() && item.link) {
       if (item.link === '/tasks') navigationRef.navigate('MainTabs', { screen: 'TasksTab' });
-      else if (item.link === '/customers') navigationRef.navigate('MainTabs', { screen: 'CustomersTab' });
+      else if (item.link === '/customers' && canAccessScreen(user?.role, 'Customers')) navigationRef.navigate('MainTabs', { screen: 'CustomersTab' });
       else if (item.link === '/chat') navigationRef.navigate('MainTabs', { screen: 'ChatTab' });
       else {
         const screen = LINK_SCREENS[item.link];
-        if (screen) navigationRef.navigate(screen);
+        if (screen && canAccessScreen(user?.role, screen)) navigationRef.navigate(screen);
       }
     }
   };

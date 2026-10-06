@@ -3,6 +3,8 @@ import { View, Text, FlatList, TouchableOpacity, RefreshControl, StyleSheet } fr
 import { Bell, CheckCheck } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import { canAccessScreen } from '../../config/permissions';
 import Header from '../../components/common/Header';
 import EmptyState from '../../components/common/EmptyState';
 
@@ -39,6 +41,7 @@ function formatRelativeTime(dateStr) {
 
 export default function NotificationsScreen({ navigation }) {
   const { colors, fonts } = useTheme();
+  const { user } = useAuth();
   const { notifications, unreadCount, markRead, markAllRead, refreshNotifications } = useNotifications();
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -55,11 +58,11 @@ export default function NotificationsScreen({ navigation }) {
       await markRead(itemId);
     }
     if (item.link === '/tasks') navigation.navigate('MainTabs', { screen: 'TasksTab' });
-    else if (item.link === '/customers') navigation.navigate('MainTabs', { screen: 'CustomersTab' });
+    else if (item.link === '/customers' && canAccessScreen(user?.role, 'Customers')) navigation.navigate('MainTabs', { screen: 'CustomersTab' });
     else if (item.link === '/chat') navigation.navigate('MainTabs', { screen: 'ChatTab' });
     else {
       const screen = LINK_SCREENS[item.link];
-      if (screen) navigation.navigate(screen);
+      if (screen && canAccessScreen(user?.role, screen)) navigation.navigate(screen);
     }
   };
 

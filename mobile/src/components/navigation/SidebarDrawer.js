@@ -205,6 +205,7 @@ export default function SidebarDrawer({ navigationRef }) {
   // Active route detection
   const currentRoute = navigationRef?.isReady?.() ? navigationRef.getCurrentRoute()?.name : null;
   const isDashboard = !currentRoute || currentRoute === 'DashboardTab' || currentRoute === 'MainTabs';
+  const isLeads = currentRoute === 'Leads';
 
   // Role permissions
   const role = user?.role;
@@ -362,6 +363,22 @@ export default function SidebarDrawer({ navigationRef }) {
               </TouchableOpacity>
             )}
 
+            {/* Leads */}
+            {canAccessScreen(role, 'Leads') && (
+              <TouchableOpacity
+                style={[styles.navItem, isLeads && styles.navItemActive]}
+                onPress={() => navigateTo('Leads')}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Leads"
+              >
+                <View style={styles.itemLeft}>
+                  <Users size={19} color="#6366f1" />
+                  <Text style={[styles.itemLabel, isLeads && styles.itemLabelActive]}>Leads</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             {/* Customers */}
             {canAccessScreen(role, 'Customers') && (
               <TouchableOpacity
@@ -491,16 +508,18 @@ export default function SidebarDrawer({ navigationRef }) {
             <View style={styles.divider} />
 
             {/* Global Search */}
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => navigateTo('GlobalSearch')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.itemLeft}>
-                <Search size={19} color="#6366f1" />
-                <Text style={styles.itemLabel}>Global Search</Text>
-              </View>
-            </TouchableOpacity>
+            {canAccessScreen(role, 'GlobalSearch') && (
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => navigateTo('GlobalSearch')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.itemLeft}>
+                  <Search size={19} color="#6366f1" />
+                  <Text style={styles.itemLabel}>Global Search</Text>
+                </View>
+              </TouchableOpacity>
+            )}
 
             {/* Notifications */}
             <TouchableOpacity

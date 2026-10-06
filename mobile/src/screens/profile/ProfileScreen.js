@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,12 @@ import {
 import AnimatedModal from '../../components/common/AnimatedModal';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { getServerUrl, setServerUrl, testServerConnection, setAuthToken, apiPut } from '../../config/api';
+import { setAuthToken, apiPut } from '../../config/api';
 import Header from '../../components/common/Header';
 import {
   Mail,
   Phone,
   Moon,
-  Server,
   Lock,
   LogOut,
   ChevronRight,
@@ -29,11 +28,6 @@ export default function ProfileScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
 
-  // Server URL modal
-  const [serverUrl, setLocalServerUrl] = useState('');
-  const [showServerModal, setShowServerModal] = useState(false);
-  const [tempUrl, setTempUrl] = useState('');
-
   // Password Modal
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -41,27 +35,8 @@ export default function ProfileScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPass, setChangingPass] = useState(false);
 
-  useEffect(() => {
-    getServerUrl().then(url => {
-      setLocalServerUrl(url);
-      setTempUrl(url);
-    });
-  }, []);
-
-  const handleSaveServerUrl = async () => {
-    if (!tempUrl.trim()) return;
-    try {
-      await testServerConnection(tempUrl);
-      const saved = await setServerUrl(tempUrl);
-      setLocalServerUrl(saved);
-      setShowServerModal(false);
-      Alert.alert('Connected', `Server URL verified and saved:\n${saved}`);
-    } catch (error) {
-      Alert.alert('Connection Failed', error.message || 'Could not reach this server.');
-    }
-  };
-
   const handleChangePassword = async () => {
+    if (user?.role !== 'super_admin') return;
     if (!currentPassword || !newPassword) {
       Alert.alert('Validation Error', 'Please fill in all password fields.');
       return;
@@ -148,7 +123,7 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>PREFERENCES</Text>
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {/* Dark Mode Toggle */}
-          <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
+          <View style={[styles.menuItem, { borderBottomWidth: user?.role === 'super_admin' ? 1 : 0, borderBottomColor: colors.border }]}>
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
                 <Moon size={18} color="#6366f1" />
@@ -163,43 +138,21 @@ export default function ProfileScreen() {
             />
           </View>
 
-          {/* Change Password */}
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: colors.border }]}
-            onPress={() => setShowPasswordModal(true)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuLeft}>
-              <View style={[styles.iconBox, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-                <Lock size={18} color="#f59e0b" />
+          {user?.role === 'super_admin' && (
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomWidth: 0 }]}
+              onPress={() => setShowPasswordModal(true)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.menuLeft}>
+                <View style={[styles.iconBox, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                  <Lock size={18} color="#f59e0b" />
+                </View>
+                <Text style={[styles.menuText, { color: colors.text }]}>Change Password</Text>
               </View>
-              <Text style={[styles.menuText, { color: colors.text }]}>Change Password</Text>
-            </View>
-            <ChevronRight size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          {/* Server Connection URL */}
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => {
-              setTempUrl(serverUrl);
-              setShowServerModal(true);
-            }}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuLeft}>
-              <View style={[styles.iconBox, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <Server size={18} color="#10b981" />
-              </View>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={[styles.menuText, { color: colors.text }]}>API Server URL</Text>
-                <Text style={[styles.serverSubText, { color: colors.textMuted }]} numberOfLines={1}>
-                  {serverUrl}
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+              <ChevronRight size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Logout Button */}
@@ -218,7 +171,7 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* Change Password Modal */}
-      <AnimatedModal visible={showPasswordModal} onRequestClose={() => setShowPasswordModal(false)}>
+      <AnimatedModal visible={user?.role === 'super_admin' && showPasswordModal} onRequestClose={() => setShowPasswordModal(false)}>
         <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Change Password</Text>
@@ -277,52 +230,6 @@ export default function ProfileScreen() {
         </View>
       </AnimatedModal>
 
-      {/* Server URL Config Modal */}
-      <AnimatedModal visible={showServerModal} onRequestClose={() => setShowServerModal(false)}>
-        <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Configure API Server</Text>
-            <TouchableOpacity onPress={() => setShowServerModal(false)}>
-              <X size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            showsVerticalScrollIndicator={true}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.modalScrollContent}
-          >
-            <Text style={[styles.modalDesc, { color: colors.textMuted }]}>
-              Enter the HTTPS backend API URL. Development builds can also use your computer's LAN address.
-            </Text>
-
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-              value={tempUrl}
-              onChangeText={setTempUrl}
-              placeholder="https://api.example.com/api"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </ScrollView>
-
-          <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={[styles.modalBtn, { backgroundColor: colors.cardSecondary }]}
-              onPress={() => setShowServerModal(false)}
-            >
-              <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalBtn, { backgroundColor: colors.primary }]}
-              onPress={handleSaveServerUrl}
-            >
-              <Text style={{ color: '#ffffff', fontWeight: '700' }}>Test & Save</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </AnimatedModal>
     </View>
   );
 }
@@ -418,10 +325,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  serverSubText: {
-    fontSize: 11,
-    marginTop: 2,
-  },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -468,11 +371,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-  },
-  modalDesc: {
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 16,
   },
   modalInputLabel: {
     fontSize: 12,

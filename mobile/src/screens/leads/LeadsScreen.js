@@ -33,6 +33,21 @@ import {
 const STATUS_LIST = ['All', 'New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost', 'Converted'];
 const SOURCE_LIST = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial', 'Other'];
 const SERVICE_LIST = ['GPS Tracking', 'CCTV', 'CCTV Security', 'Website Design', 'Web Development', 'Software Development', 'SMS Package', 'WhatsApp WABA', 'RCS Messaging', 'Voice Package', 'Digital Marketing', 'AMC Support'];
+const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services'];
+const DIGITAL_PRODUCTS = new Set(['SMS', 'WhatsApp WABA', 'RCS', 'Voice Call', 'Website Development', 'Software Development', 'Digital Marketing']);
+
+function leadMatchesGroup(lead, group) {
+  if (group === 'All') return true;
+  if (lead.source === 'Justdial') {
+    if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor';
+    if (group === 'CCTV') return lead.justdialProduct === 'CCTV';
+    return DIGITAL_PRODUCTS.has(lead.justdialProduct);
+  }
+  const service = String(lead.service || '');
+  if (group === 'GPS & Fuel Sensor') return /\b(gps|fuel sensor|fuel monitoring|vehicle tracking|fleet tracking)\b/i.test(service);
+  if (group === 'CCTV') return /\b(cctv|camera|surveillance)\b/i.test(service);
+  return /\b(sms|rcs|whatsapp|waba|voice|ivr|website|web design|web development|software|app development|digital marketing|seo)\b/i.test(service);
+}
 const leadDate = lead => {
   const enquiryDate = lead.source === 'Justdial' ? String(lead.justdialPayload?.date || '') : '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(enquiryDate) && !Number.isNaN(new Date(`${enquiryDate}T00:00:00Z`).getTime())) {
@@ -51,9 +66,7 @@ export default function LeadsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('All');
-  const [selectedSource, setSelectedSource] = useState('All');
-  const [reviewOnly, setReviewOnly] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState('All');
   const [productOptions, setProductOptions] = useState([]);
 
   // Modal State
@@ -177,10 +190,7 @@ export default function LeadsScreen() {
       (lead.company || '').toLowerCase().includes(search.toLowerCase()) ||
       (lead.service || '').toLowerCase().includes(search.toLowerCase());
 
-    const matchStatus = selectedStatus === 'All' || lead.status === selectedStatus;
-    const matchSource = selectedSource === 'All' || lead.source === selectedSource;
-    const matchReview = !reviewOnly || (lead.source === 'Justdial' && (!lead.justdialProduct || lead.justdialProduct === 'Unclassified'));
-    return matchSearch && matchStatus && matchSource && matchReview;
+    return matchSearch && leadMatchesGroup(lead, selectedGroup);
   });
 
   return (
@@ -209,11 +219,11 @@ export default function LeadsScreen() {
         />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          {STATUS_LIST.map((st, i) => {
-            const isSelected = selectedStatus === st;
+          {LEAD_GROUPS.map(group => {
+            const isSelected = selectedGroup === group;
             return (
               <TouchableOpacity
-                key={i}
+                key={group}
                 style={[
                   styles.filterChip,
                   {
@@ -221,24 +231,16 @@ export default function LeadsScreen() {
                     borderColor: isSelected ? colors.primary : colors.border
                   }
                 ]}
-                onPress={() => setSelectedStatus(st)}
+                onPress={() => setSelectedGroup(group)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
               >
                 <Text style={[styles.filterChipText, { color: isSelected ? '#ffffff' : colors.textMuted }]}>
-                  {st}
+                  {group}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          {['All', ...SOURCE_LIST].map(source => (
-            <TouchableOpacity key={source} style={[styles.filterChip, { backgroundColor: selectedSource === source ? colors.primary : colors.cardSecondary, borderColor: selectedSource === source ? colors.primary : colors.border }]}
-              onPress={() => setSelectedSource(source)}>
-              <Text style={[styles.filterChipText, { color: selectedSource === source ? '#fff' : colors.textMuted }]}>{source}</Text>
-            </TouchableOpacity>
-          ))}
-          {isAdmin ? <TouchableOpacity style={[styles.filterChip, { borderColor: '#f59e0b', backgroundColor: reviewOnly ? 'rgba(245,158,11,0.15)' : colors.cardSecondary }]}
-            onPress={() => setReviewOnly(value => !value)}><Text style={{ color: '#b45309', fontWeight: '700' }}>Needs Review ({leads.filter(lead => lead.source === 'Justdial' && (!lead.justdialProduct || lead.justdialProduct === 'Unclassified')).length})</Text></TouchableOpacity> : null}
         </ScrollView>
       </View>
 

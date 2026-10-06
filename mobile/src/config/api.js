@@ -4,10 +4,9 @@ import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
 const REQUEST_TIMEOUT_MS = 20000;
-const SERVER_URL_KEY = 'crm_server_url';
 const TOKEN_KEY = 'crm_auth_token';
 const USER_KEY = 'crm_auth_user';
-const PRODUCTION_SERVER_URL = 'https://crm.advaitdigital.co.in/api';
+const PRODUCTION_SERVER_URL = 'https://api-crm.advaitdigital.co.in/api';
 let unauthorizedHandler = null;
 
 function normalizeServerUrl(url) {
@@ -26,7 +25,7 @@ function getDevelopmentServerUrl() {
 }
 
 export const DEFAULT_SERVER_URL = normalizeServerUrl(
-  process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? getDevelopmentServerUrl() : PRODUCTION_SERVER_URL)
+  __DEV__ ? getDevelopmentServerUrl() : PRODUCTION_SERVER_URL
 );
 
 export function registerUnauthorizedHandler(handler) {
@@ -37,33 +36,7 @@ export function registerUnauthorizedHandler(handler) {
 }
 
 export async function getServerUrl() {
-  try {
-    return (await AsyncStorage.getItem(SERVER_URL_KEY)) || DEFAULT_SERVER_URL;
-  } catch {
-    return DEFAULT_SERVER_URL;
-  }
-}
-
-export async function setServerUrl(url) {
-  const cleanUrl = normalizeServerUrl(url);
-  if (!cleanUrl) throw new Error('Enter a valid API server URL.');
-
-  let parsed;
-  try {
-    parsed = new URL(cleanUrl);
-  } catch {
-    throw new Error('Enter a complete URL beginning with https://.');
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Only HTTP or HTTPS server URLs are supported.');
-  }
-  if (!__DEV__ && parsed.protocol !== 'https:') {
-    throw new Error('Production builds require an HTTPS API URL.');
-  }
-
-  await AsyncStorage.setItem(SERVER_URL_KEY, cleanUrl);
-  return cleanUrl;
+  return DEFAULT_SERVER_URL;
 }
 
 export async function getAuthToken() {
@@ -123,7 +96,7 @@ export async function apiRequest(endpoint, options = {}) {
   const token = await getAuthToken();
 
   if (!baseUrl) {
-    throw new Error('API server is not configured. Open Server Settings and enter the HTTPS API URL.');
+    throw new Error('API server is not configured in this app build. Contact the administrator.');
   }
 
   const path = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
@@ -157,6 +130,9 @@ export async function apiRequest(endpoint, options = {}) {
     const data = contentType.includes('application/json') ? await response.json() : await response.text();
 
     if (!response.ok) {
+      if (contentType.includes('text/html')) {
+        throw new Error(`CRM API request failed (HTTP ${response.status}). Contact the administrator.`);
+      }
       const message = typeof data === 'object' && (data.message || data.error)
         ? data.message || data.error
         : data || 'Request failed';
@@ -169,26 +145,8 @@ export async function apiRequest(endpoint, options = {}) {
       throw new Error('The server took too long to respond. Check your connection and try again.');
     }
     if (error instanceof TypeError) {
-      throw new Error('Unable to reach the API server. Check your network and Server Settings.');
+      throw new Error('Unable to reach the CRM API server. Check your network and try again.');
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export async function testServerConnection(url) {
-  const baseUrl = normalizeServerUrl(url || await getServerUrl());
-  if (!baseUrl) throw new Error('API server is not configured.');
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const response = await fetch(baseUrl.replace(/\/api$/, '') + '/health/ready', { signal: controller.signal });
-    if (!response.ok) throw new Error('The server is reachable but not ready.');
-    return await response.json();
-  } catch (error) {
-    if (error?.name === 'AbortError') throw new Error('Connection test timed out.');
     throw error;
   } finally {
     clearTimeout(timeout);

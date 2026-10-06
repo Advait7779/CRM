@@ -39,7 +39,7 @@ npx expo start
 1. Connect your phone to the **same Wi-Fi network** as your computer.
 2. Open the **Expo Go** app on your phone.
 3. Scan the QR code shown in your terminal.
-4. On the login screen, tap **Server Settings** and enter your PC's API address (e.g. `http://192.168.1.100:5001/api`). Production APKs use `https://crm.advaitdigital.co.in/api` by default; Server Settings can override it.
+4. Sign in with your CRM account. Development builds derive the local API address from Expo's LAN host. Production APKs use the API address configured in `src/config/api.js`: `https://api-crm.advaitdigital.co.in/api`.
 
 ---
 
@@ -47,8 +47,8 @@ npx expo start
 
 | # | Screen | Description |
 |---|---|---|
-| 1 | **Login & Auth** | JWT Authentication with remember me and live API Server IP configuration |
-| 2 | **Dashboard** | Revenue insights, 6 live stat cards, lead sources breakdown, recent prospects |
+| 1 | **Login & Auth** | JWT authentication with a build-configured API address |
+| 2 | **Dashboard** | Role-specific CRM metrics and recent leads or assigned installations |
 | 3 | **Customers** | Client account directory, services, contact shortcuts (Call, WhatsApp, Email), Add/Edit modal |
 | 4 | **Customer Details** | Complete profile with installations, renewals, CCTV/GPS inventory tabs |
 | 5 | **Leads Pipeline** | Prospect tracking (New, Contacted, Demo Given, Quotation Sent, Won, Lost) + quick call/WhatsApp |

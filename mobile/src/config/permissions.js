@@ -4,6 +4,7 @@ export const OPERATIONS = [...ADMIN, 'installation_manager', 'gps_installer', 'c
 export const SUPPORT = [...ADMIN, 'support_executive'];
 export const FINANCE = [...ADMIN, 'accounts'];
 export const MANAGEMENT = [...ADMIN, 'sales_manager', 'installation_manager'];
+export const FIELD_INSTALLERS = ['gps_installer', 'cctv_technician'];
 export const ALL_STAFF = [
   ...new Set([...ADMIN, 'accounts', 'sales_manager', 'sales_executive', 'installation_manager',
     'gps_installer', 'cctv_technician', 'website_developer', 'digital_marketing', 'support_executive'])
@@ -14,20 +15,20 @@ export const SCREEN_ROLES = {
   Renewals: [...new Set([...SALES, ...FINANCE])],
   Quotations: [...new Set([...SALES, ...FINANCE])],
   Accounts: FINANCE,
-  Inventory: [...new Set([...OPERATIONS, ...MANAGEMENT])],
+  Inventory: [...new Set([...OPERATIONS, ...MANAGEMENT])].filter(role => !FIELD_INSTALLERS.includes(role)),
   Installations: [...new Set([...OPERATIONS, ...SALES, ...SUPPORT])],
-  Tickets: [...new Set([...SUPPORT, ...OPERATIONS])],
+  Tickets: [...new Set([...SUPPORT, ...OPERATIONS])].filter(role => !FIELD_INSTALLERS.includes(role)),
   Employees: ADMIN,
   MyWork: ALL_STAFF,
   Users: ADMIN,
   NotificationSettings: ADMIN,
-  Calendar: ALL_STAFF,
+  Calendar: ALL_STAFF.filter(role => !FIELD_INSTALLERS.includes(role)),
   Profile: ALL_STAFF,
-  Customers: ALL_STAFF,
+  Customers: ALL_STAFF.filter(role => !FIELD_INSTALLERS.includes(role)),
   Tasks: ALL_STAFF,
   Chat: ALL_STAFF,
   Dashboard: ALL_STAFF,
-  GlobalSearch: ALL_STAFF,
+  GlobalSearch: ALL_STAFF.filter(role => !FIELD_INSTALLERS.includes(role)),
   Notifications: ALL_STAFF,
 };
 
@@ -49,3 +50,4 @@ export const hasRole = (role, roles = []) => Boolean(role && roles.includes(role
 export const canAccessScreen = (role, screen) => hasRole(role, SCREEN_ROLES[screen] || ALL_STAFF);
 export const canWriteResource = (role, resource) => hasRole(role, WRITE_ROLES[resource] || []);
 export const isManager = (role) => hasRole(role, MANAGEMENT);
+export const isFieldInstaller = (role) => hasRole(role, FIELD_INSTALLERS);

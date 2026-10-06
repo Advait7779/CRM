@@ -55,6 +55,8 @@ export default function InstallationsScreen() {
   const { user } = useAuth();
   const canWrite = canWriteResource(user?.role, 'installations');
   const canComplete = ['super_admin', 'director', 'installation_manager', 'gps_installer', 'cctv_technician'].includes(user?.role);
+  const visibleTypes = user?.role === 'gps_installer' ? ['All', 'gps']
+    : user?.role === 'cctv_technician' ? ['All', 'cctv'] : TYPES;
 
   const [installations, setInstallations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -309,7 +311,7 @@ export default function InstallationsScreen() {
         />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          {TYPES.map((t, i) => {
+          {visibleTypes.map((t, i) => {
             const isSelected = selectedType === t;
             return (
               <TouchableOpacity
@@ -324,7 +326,7 @@ export default function InstallationsScreen() {
                 onPress={() => setSelectedType(t)}
               >
                 <Text style={[styles.filterChipText, { color: isSelected ? '#ffffff' : colors.textMuted }]}>
-                  {t === 'all' ? 'All' : t.toUpperCase()}
+                  {t === 'All' ? 'All' : t.toUpperCase()}
                 </Text>
               </TouchableOpacity>
             );
@@ -347,7 +349,7 @@ export default function InstallationsScreen() {
           ListEmptyComponent={
             <EmptyState
               title="No installation jobs found"
-              description="Tap 'Schedule' to dispatch an installer."
+              description={canWrite ? "Tap 'Schedule' to dispatch an installer." : 'Jobs assigned to you will appear here.'}
               icon={Wrench}
               actionText={canWrite ? 'Schedule Job' : undefined}
               onAction={canWrite ? openAddModal : undefined}
@@ -388,20 +390,21 @@ export default function InstallationsScreen() {
                 ) : null}
 
                 <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
-                  {item.installer ? (
-                    <View style={styles.techRow}>
-                      <User size={12} color={colors.primary} />
-                      <Text style={[styles.techText, { color: colors.textMuted }]}>Tech: {item.installer}</Text>
-                    </View>
-                  ) : <View />}
-
-                  <View style={styles.footerActions}>
+                  <View style={styles.footerMeta}>
+                    {item.installer ? (
+                      <View style={styles.techRow}>
+                        <User size={12} color={colors.primary} />
+                        <Text style={[styles.techText, { color: colors.textMuted }]} numberOfLines={1}>Tech: {item.installer}</Text>
+                      </View>
+                    ) : null}
                     {item.date ? (
                       <View style={styles.techRow}>
                         <Calendar size={12} color={colors.textMuted} />
                         <Text style={[styles.techText, { color: colors.textMuted }]}>{String(item.date).slice(0, 10)}</Text>
                       </View>
                     ) : null}
+                  </View>
+                  <View style={styles.footerActions}>
                     {(item.status === 'Completed' || canComplete) && (isGps || isCctv) ? (
                       <TouchableOpacity style={[styles.editJobBtn, { borderColor: colors.primary }]} onPress={() => openProof(item)} accessibilityRole="button" accessibilityLabel={`${item.status === 'Completed' ? 'View proof for' : 'Complete'} installation for ${item.customer}`}>
                         <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{item.status === 'Completed' ? `Proof (${proofCount(item.reportPhoto)})` : 'Complete'}</Text>
@@ -718,22 +721,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     borderTopWidth: 1,
     paddingTop: 10,
     marginTop: 6,
+    gap: 10,
   },
+  footerMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   techRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    maxWidth: '100%',
   },
   techText: {
     fontSize: 12,
+    flexShrink: 1,
   },
-  footerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  footerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 10 },
   editJobBtn: { minHeight: 36, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   modalOverlay: {
     flex: 1,

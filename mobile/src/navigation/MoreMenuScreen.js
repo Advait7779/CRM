@@ -64,7 +64,7 @@ export default function MoreMenuScreen({ navigation }) {
         { title: 'Employees Directory', desc: 'Staff directory & payroll', icon: Users, color: '#6366f1', screen: 'Employees' },
         { title: 'User Management', desc: 'System roles & access control', icon: ShieldCheck, color: '#dc2626', screen: 'Users' },
         { title: 'Notification URLs', desc: 'Customer and Justdial message templates', icon: Settings, color: '#6366f1', screen: 'NotificationSettings' },
-        { title: 'My Profile & Settings', desc: 'Theme, password & API server', icon: User, color: colors.primary, screen: 'Profile' }
+        { title: 'My Profile & Settings', desc: 'Account and display preferences', icon: User, color: colors.primary, screen: 'Profile' }
       ]
     }
   ];

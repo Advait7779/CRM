@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -15,12 +16,12 @@ test('mobile defaults to the web-aligned light design system', () => {
   assert.match(theme, /background: '#f8fafc'/);
 });
 
-test('API configuration is environment-driven and session-safe', () => {
+test('API configuration uses the production backend and keeps tokens secure', () => {
   const api = read('src/config/api.js');
   assert.doesNotMatch(api, /192\.168\./);
-  assert.match(api, /EXPO_PUBLIC_API_URL/);
+  assert.match(api, /https:\/\/api-crm\.advaitdigital\.co\.in\/api/);
+  assert.doesNotMatch(api, /crm_server_url|setServerUrl|testServerConnection/);
   assert.match(api, /SecureStore/);
-  assert.match(api, /Production builds require an HTTPS API URL/);
   assert.match(api, /unauthorizedHandler\?\.\(\)/);
 });
 
@@ -40,6 +41,26 @@ test('role permissions and authenticated chat media are enforced', () => {
   assert.match(permissions, /users: ADMIN/);
   assert.match(server, /router\.get\('\/chat\/media\/:filename', authMiddleware/);
   assert.doesNotMatch(server, /Fallback if file was a simulated attachment/);
+});
+
+test('field installers can open assigned-work modules without customer or stock screens', () => {
+  const source = read('src/config/permissions.js').replaceAll('export const ', 'const ');
+  const context = { module: { exports: {} } };
+  vm.runInNewContext(`${source}\nmodule.exports = { canAccessScreen, isFieldInstaller };`, context);
+  const { canAccessScreen, isFieldInstaller } = context.module.exports;
+  for (const role of ['gps_installer', 'cctv_technician']) {
+    assert.equal(isFieldInstaller(role), true);
+    for (const screen of ['Dashboard', 'Tasks', 'Chat', 'Installations']) {
+      assert.equal(canAccessScreen(role, screen), true, `${role} needs ${screen}`);
+    }
+    for (const screen of ['Customers', 'Inventory', 'Tickets', 'Calendar', 'GlobalSearch']) {
+      assert.equal(canAccessScreen(role, screen), false, `${role} must not open ${screen}`);
+    }
+  }
+  assert.equal(canAccessScreen('super_admin', 'Customers'), true);
+  assert.equal(canAccessScreen('installation_manager', 'Inventory'), true);
+  assert.doesNotMatch(read('src/screens/auth/LoginScreen.js'), /Server Settings|Test & Save/);
+  assert.doesNotMatch(read('src/screens/profile/ProfileScreen.js'), /API Server URL|Test & Save/);
 });
 
 test('chat list safely renders structured last-message previews', () => {

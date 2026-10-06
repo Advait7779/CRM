@@ -11,16 +11,16 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useNotifications } from '../../context/NotificationContext';
-import { apiGet } from '../../config/api';
+import { apiGet, apiGetAll } from '../../config/api';
 import Header from '../../components/common/Header';
 import Badge from '../../components/common/Badge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { canAccessScreen } from '../../config/permissions';
+import { canAccessScreen, isFieldInstaller } from '../../config/permissions';
 import {
   Users,
   UserCheck,
   CreditCard,
-  Headphones,
+  CheckSquare,
   RefreshCw,
   FileText,
   Phone,
@@ -28,16 +28,12 @@ import {
   Bell
 } from 'lucide-react-native';
 
-const SOURCE_COLORS = {
-  Website: '#6366f1',
-  Facebook: '#3b82f6',
-  WhatsApp: '#10b981',
-  Reference: '#f59e0b',
-  Call: '#8b5cf6',
-};
+const isCompleted = status => ['completed', 'complete'].includes(String(status || '').toLowerCase());
+const isPendingTask = status => ['pending', 'ongoing'].includes(String(status || '').toLowerCase());
 
 export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
+  const installer = isFieldInstaller(user?.role);
   const { colors } = useTheme();
   const { unreadCount } = useNotifications();
 
@@ -49,25 +45,34 @@ export default function DashboardScreen({ navigation }) {
   const fetchStats = useCallback(async () => {
     try {
       setError('');
-      const data = await apiGet('/dashboard/stats');
-      setStats(data);
+      if (installer) {
+        const [assignedInstallations, assignedTasks] = await Promise.all([
+          apiGetAll('/installations'),
+          apiGetAll('/tasks')
+        ]);
+        setStats({
+          assignedInstallations: Array.isArray(assignedInstallations) ? assignedInstallations : [],
+          assignedTasks: Array.isArray(assignedTasks) ? assignedTasks : []
+        });
+      } else {
+        setStats(await apiGet('/dashboard/stats'));
+      }
     } catch (requestError) {
       setError(requestError.message || 'Dashboard data could not be loaded.');
-      setStats({
+      setStats(installer ? { assignedInstallations: [], assignedTasks: [] } : {
         totalLeads: 0,
         totalCustomers: 0,
-        openTickets: 0,
+        pendingTasks: 0,
         pendingInvoices: 0,
         renewalsDueSoon: 0,
         pendingRevenue: 0,
-        recentLeads: [],
-        leadsBySource: []
+        recentLeads: []
       });
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [installer]);
 
   useEffect(() => {
     fetchStats();
@@ -78,16 +83,21 @@ export default function DashboardScreen({ navigation }) {
     fetchStats();
   };
 
-  const statCards = stats ? [
+  const installerJobs = stats?.assignedInstallations || [];
+  const installerTasks = stats?.assignedTasks || [];
+  const statCards = installer ? [
+    { label: 'Assigned Installations', value: installerJobs.length.toLocaleString(), change: 'My Jobs', up: true, icon: UserCheck, color: '#6366f1', bg: 'rgba(99,102,241,0.12)', screen: 'Installations' },
+    { label: 'Pending Installations', value: installerJobs.filter(job => !isCompleted(job.status)).length.toLocaleString(), change: 'To Do', up: false, icon: RefreshCw, color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', screen: 'Installations' },
+    { label: 'Completed Installations', value: installerJobs.filter(job => isCompleted(job.status)).length.toLocaleString(), change: 'Done', up: true, icon: CheckSquare, color: '#10b981', bg: 'rgba(16,185,129,0.12)', screen: 'Installations' },
+    { label: 'Pending Tasks', value: installerTasks.filter(task => isPendingTask(task.status)).length.toLocaleString(), change: 'My Tasks', up: false, icon: CheckSquare, color: '#ef4444', bg: 'rgba(239,68,68,0.12)', screen: 'Tasks', target: 'TasksTab' },
+  ] : stats ? [
     { label: 'Total Leads', value: stats.totalLeads?.toLocaleString() || '0', change: 'All time', up: true, icon: Users, color: '#6366f1', bg: 'rgba(99,102,241,0.12)', screen: 'Leads' },
-    { label: 'Total Customers', value: stats.totalCustomers?.toLocaleString() || '0', change: 'Active', up: true, icon: UserCheck, color: '#10b981', bg: 'rgba(16,185,129,0.12)', screen: 'Customers' },
+    { label: 'Total Customers', value: stats.totalCustomers?.toLocaleString() || '0', change: 'Active', up: true, icon: UserCheck, color: '#10b981', bg: 'rgba(16,185,129,0.12)', screen: 'Customers', target: 'CustomersTab' },
     { label: 'Pending Revenue', value: `₹${((stats.pendingRevenue || 0) / 1000).toFixed(0)}K`, change: 'Unpaid', up: false, icon: CreditCard, color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', screen: 'Accounts' },
-    { label: 'Open Tickets', value: stats.openTickets?.toLocaleString() || '0', change: 'Active', up: false, icon: Headphones, color: '#ef4444', bg: 'rgba(239,68,68,0.12)', screen: 'Tickets' },
+    { label: 'Pending Tasks', value: stats.pendingTasks?.toLocaleString() || '0', change: 'Action Needed', up: false, icon: CheckSquare, color: '#ef4444', bg: 'rgba(239,68,68,0.12)', screen: 'Tasks', target: 'TasksTab' },
     { label: 'Renewals (7d)', value: stats.renewalsDueSoon?.toLocaleString() || '0', change: 'Due Soon', up: false, icon: RefreshCw, color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)', screen: 'Renewals' },
     { label: 'Pending Invoices', value: stats.pendingInvoices?.toLocaleString() || '0', change: 'Unpaid', up: false, icon: FileText, color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', screen: 'Accounts' },
   ].filter(card => canAccessScreen(user?.role, card.screen)) : [];
-
-  const totalSourceCount = (stats?.leadsBySource || []).reduce((sum, s) => sum + parseInt(s.count || 0), 0) || 1;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -138,7 +148,7 @@ export default function DashboardScreen({ navigation }) {
                   <TouchableOpacity
                     key={idx}
                     style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={() => s.screen && navigation.navigate(s.screen)}
+                    onPress={() => navigation.navigate(s.target || s.screen)}
                     activeOpacity={0.7}
                   >
                     <View style={styles.statTopRow}>
@@ -160,40 +170,31 @@ export default function DashboardScreen({ navigation }) {
               })}
             </View>
 
-            {/* Leads By Source Breakdown */}
-            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Leads by Source</Text>
-                <Text style={[styles.sectionCount, { color: colors.textMuted }]}>
-                  {stats?.leadsBySource?.length || 0} channels
-                </Text>
-              </View>
-
-              <View style={styles.sourceList}>
-                {(stats?.leadsBySource || []).map((src, i) => {
-                  const color = SOURCE_COLORS[src.source] || '#6366f1';
-                  const pct = Math.round((parseInt(src.count) / totalSourceCount) * 100);
-                  return (
-                    <View key={i} style={styles.sourceRow}>
-                      <View style={styles.sourceInfo}>
-                        <View style={[styles.sourceDot, { backgroundColor: color }]} />
-                        <Text style={[styles.sourceName, { color: colors.text }]}>{src.source}</Text>
-                      </View>
-                      <View style={styles.progressContainer}>
-                        <View style={[styles.progressBar, { backgroundColor: colors.cardSecondary }]}>
-                          <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: color }]} />
-                        </View>
-                        <Text style={[styles.sourceCount, { color: colors.textMuted }]}>
-                          {src.count} ({pct}%)
-                        </Text>
-                      </View>
+            {/* Recent assigned work for installers; leads for other roles */}
+            {installer ? (
+              <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>My Installations</Text>
+                  <TouchableOpacity onPress={() => navigation.navigate('Installations')} style={styles.viewAllBtn}>
+                    <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
+                    <ArrowRight size={14} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                {installerJobs.length === 0 ? (
+                  <Text style={[styles.emptyText, { color: colors.textMuted }]}>No installations assigned yet.</Text>
+                ) : installerJobs.slice(0, 5).map((job, index) => (
+                  <View key={job.id || index} style={[styles.leadItem, { borderBottomColor: colors.border }]}>
+                    <View style={styles.leadDetails}>
+                      <Text style={[styles.leadName, { color: colors.text }]}>{job.customer || 'Installation'}</Text>
+                      <Text style={[styles.leadService, { color: colors.textMuted }]}>
+                        {job.type || 'Installation'}{job.vehicle || job.site ? ` • ${job.vehicle || job.site}` : ''}
+                      </Text>
                     </View>
-                  );
-                })}
+                    <Badge label={job.status || 'Pending'} size="small" />
+                  </View>
+                ))}
               </View>
-            </View>
-
-            {/* Recent Leads */}
+            ) : (
             <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Leads</Text>
@@ -236,6 +237,7 @@ export default function DashboardScreen({ navigation }) {
                 ))
               )}
             </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -341,10 +343,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  sectionCount: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
   viewAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -353,51 +351,6 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 13,
     fontWeight: '600',
-  },
-  sourceList: {
-    gap: 12,
-  },
-  sourceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sourceInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    width: 110,
-  },
-  sourceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  sourceName: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  progressContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  progressBar: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  sourceCount: {
-    fontSize: 11,
-    fontWeight: '600',
-    minWidth: 55,
-    textAlign: 'right',
   },
   leadItem: {
     flexDirection: 'row',

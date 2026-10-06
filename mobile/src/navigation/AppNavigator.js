@@ -2,6 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { canAccessScreen } from '../config/permissions';
 import { ActivityIndicator, View } from 'react-native';
 
 // Auth Stack
@@ -30,7 +31,7 @@ import NotificationsScreen from '../screens/system/NotificationsScreen';
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   const { colors } = useTheme();
 
   if (loading) {
@@ -61,26 +62,28 @@ export default function AppNavigator() {
       ) : (
         <>
           <Stack.Screen name="MainTabs" component={BottomTabs} />
-          <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
+          {canAccessScreen(user?.role, 'Customers') && <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />}
           <Stack.Screen name="ChatConversation" component={ChatConversationScreen} />
           <Stack.Screen name="Leads" component={LeadsScreen} />
           <Stack.Screen name="Renewals" component={RenewalsScreen} />
           <Stack.Screen name="Quotations" component={QuotationsScreen} />
           <Stack.Screen name="Accounts" component={AccountsScreen} />
-          <Stack.Screen name="Inventory" component={InventoryScreen} />
+          {canAccessScreen(user?.role, 'Inventory') && <Stack.Screen name="Inventory" component={InventoryScreen} />}
           <Stack.Screen name="Installations" component={InstallationsScreen} />
-          <Stack.Screen name="Tickets" component={TicketsScreen} />
+          {canAccessScreen(user?.role, 'Tickets') && <Stack.Screen name="Tickets" component={TicketsScreen} />}
           <Stack.Screen name="Employees" component={EmployeesScreen} />
           <Stack.Screen name="MyWork" component={MyWorkScreen} />
-          <Stack.Screen name="Calendar" component={CalendarScreen} />
+          {canAccessScreen(user?.role, 'Calendar') && <Stack.Screen name="Calendar" component={CalendarScreen} />}
           <Stack.Screen name="Users" component={UsersScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
-          <Stack.Screen
-            name="GlobalSearch"
-            component={GlobalSearchScreen}
-            options={{ animation: 'fade_from_bottom', animationDuration: 220 }}
-          />
+          {canAccessScreen(user?.role, 'GlobalSearch') && (
+            <Stack.Screen
+              name="GlobalSearch"
+              component={GlobalSearchScreen}
+              options={{ animation: 'fade_from_bottom', animationDuration: 220 }}
+            />
+          )}
           <Stack.Screen
             name="Notifications"
             component={NotificationsScreen}

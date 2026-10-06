@@ -1,6 +1,8 @@
 import React, { useRef, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { canAccessScreen } from '../config/permissions';
 import { Platform, TouchableOpacity, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DashboardScreen from '../screens/dashboard/DashboardScreen';
@@ -90,6 +92,7 @@ function AnimatedTabBarButton({ children, onPress, accessibilityState, style, ..
 
 export default function BottomTabs() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   
   // Provide extra clearance for Android 3-button navigation (toggle buttons) and iOS home indicator
@@ -129,14 +132,16 @@ export default function BottomTabs() {
           tabBarIcon: ({ color, size }) => <LayoutDashboard size={size || 22} color={color} />
         }}
       />
-      <Tab.Screen
-        name="CustomersTab"
-        component={AnimatedCustomers}
-        options={{
-          tabBarLabel: 'Customers',
-          tabBarIcon: ({ color, size }) => <Users size={size || 22} color={color} />
-        }}
-      />
+      {canAccessScreen(user?.role, 'Customers') && (
+        <Tab.Screen
+          name="CustomersTab"
+          component={AnimatedCustomers}
+          options={{
+            tabBarLabel: 'Customers',
+            tabBarIcon: ({ color, size }) => <Users size={size || 22} color={color} />
+          }}
+        />
+      )}
       <Tab.Screen
         name="ChatTab"
         component={AnimatedChatList}
