@@ -21,9 +21,14 @@ const getServicesArray = (srv) => {
   return []
 }
 
+const combineServices = (selected, others) => {
+  const all = [...selected, ...others.split(',').map(service => service.trim()).filter(Boolean)]
+  return all.filter((service, index) => all.findIndex(item => item.toLowerCase() === service.toLowerCase()) === index)
+}
+
 const EMPTY_FORM = {
   name: '', contact: '', phone: '', email: '', gst: '', address: '',
-  services: [], vehicles: 0, cctv: 0, domain: '', hosting: '', websiteUrl: '', renewalDate: '', status: 'Active'
+  services: [], otherServices: '', vehicles: 0, cctv: 0, domain: '', hosting: '', websiteUrl: '', renewalDate: '', status: 'Active'
 }
 
 export default function CustomersPage() {
@@ -58,7 +63,8 @@ export default function CustomersPage() {
       email: customer.email || '',
       gst: customer.gst || '',
       address: customer.address || '',
-      services: getServicesArray(customer.services),
+      services: getServicesArray(customer.services).filter(service => SERVICES.includes(service)),
+      otherServices: getServicesArray(customer.services).filter(service => !SERVICES.includes(service)).join(', '),
       vehicles: customer.vehicles || 0,
       cctv: customer.cctv || 0,
       domain: customer.domain || '',
@@ -77,9 +83,10 @@ export default function CustomersPage() {
       const hasGPS = form.services.includes('GPS')
       const hasCCTV = form.services.includes('CCTV')
       const hasWebsite = form.services.includes('Website')
+      const { otherServices, ...customerForm } = form
       const payload = {
-        ...form,
-        services: JSON.stringify(form.services),
+        ...customerForm,
+        services: JSON.stringify(combineServices(form.services, otherServices)),
         vehicles: hasGPS ? (Number(form.vehicles) || 0) : 0,
         cctv: hasCCTV ? (Number(form.cctv) || 0) : 0,
         domain: hasWebsite ? (form.domain || '') : '',
@@ -322,6 +329,17 @@ export default function CustomersPage() {
                     )
                   })}
                 </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 16 }}>
+                <label className="form-label" htmlFor="customer-other-services">Others</label>
+                <input
+                  id="customer-other-services"
+                  className="input-field"
+                  value={form.otherServices}
+                  onChange={e => setForm(f => ({ ...f, otherServices: e.target.value }))}
+                  placeholder="Enter other services, separated by commas"
+                />
               </div>
 
               {/* Conditional Service Fields */}

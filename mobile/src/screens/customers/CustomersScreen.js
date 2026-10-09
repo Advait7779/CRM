@@ -42,6 +42,11 @@ function parseServices(value) {
   }
 }
 
+function combineServices(selected, others) {
+  const all = [...selected, ...others.split(',').map(service => service.trim()).filter(Boolean)];
+  return all.filter((service, index) => all.findIndex(item => item.toLowerCase() === service.toLowerCase()) === index);
+}
+
 export default function CustomersScreen({ navigation }) {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -65,6 +70,7 @@ export default function CustomersScreen({ navigation }) {
     gst: '',
     address: '',
     services: [],
+    otherServices: '',
     renewalDate: '',
     status: 'Active'
   });
@@ -100,6 +106,7 @@ export default function CustomersScreen({ navigation }) {
       gst: '',
       address: '',
       services: ['GPS Tracking'],
+      otherServices: '',
       renewalDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       status: 'Active'
     });
@@ -115,7 +122,8 @@ export default function CustomersScreen({ navigation }) {
       email: customer.email || '',
       gst: customer.gst || '',
       address: customer.address || '',
-      services: parseServices(customer.services),
+      services: parseServices(customer.services).filter(service => SERVICE_OPTIONS.includes(service)),
+      otherServices: parseServices(customer.services).filter(service => !SERVICE_OPTIONS.includes(service)).join(', '),
       renewalDate: customer.renewalDate ? String(customer.renewalDate).slice(0, 10) : '',
       status: customer.status || 'Active'
     });
@@ -138,7 +146,8 @@ export default function CustomersScreen({ navigation }) {
       return;
     }
 
-    const payload = { ...formData, services: JSON.stringify(formData.services) };
+    const { otherServices, ...customerForm } = formData;
+    const payload = { ...customerForm, services: JSON.stringify(combineServices(formData.services, otherServices)) };
     setSaving(true);
     try {
       if (editingId) {
@@ -398,6 +407,15 @@ export default function CustomersScreen({ navigation }) {
                 );
               })}
             </View>
+
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Others</Text>
+            <TextInput
+              style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+              placeholder="Other services, separated by commas"
+              placeholderTextColor={colors.textMuted}
+              value={formData.otherServices}
+              onChangeText={(value) => setFormData(current => ({ ...current, otherServices: value }))}
+            />
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Renewal Due Date (YYYY-MM-DD)</Text>
             <TextInput
