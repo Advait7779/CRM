@@ -15,7 +15,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { apiGetAll, apiPost, apiPut, apiUpload, getAuthToken, getServerUrl } from '../../config/api';
+import { apiDelete, apiGetAll, apiPost, apiPut, apiUpload, getAuthToken, getServerUrl } from '../../config/api';
 import { canWriteResource } from '../../config/permissions';
 import Header from '../../components/common/Header';
 import SearchInput from '../../components/common/SearchInput';
@@ -23,6 +23,7 @@ import Badge from '../../components/common/Badge';
 import EmptyState from '../../components/common/EmptyState';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import AnimatedModal from '../../components/common/AnimatedModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import {
   Wrench,
   Plus,
@@ -30,6 +31,7 @@ import {
   User,
   Truck,
   Camera,
+  Trash2,
   X
 } from 'lucide-react-native';
 
@@ -54,6 +56,7 @@ export default function InstallationsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   const canWrite = canWriteResource(user?.role, 'installations');
+  const canDelete = user?.role === 'super_admin';
   const canComplete = ['super_admin', 'director', 'installation_manager', 'gps_installer', 'cctv_technician'].includes(user?.role);
   const visibleTypes = user?.role === 'gps_installer' ? ['All', 'gps']
     : user?.role === 'cctv_technician' ? ['All', 'cctv'] : TYPES;
@@ -68,6 +71,8 @@ export default function InstallationsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [installationToDelete, setInstallationToDelete] = useState(null);
+  const [deletingInstallation, setDeletingInstallation] = useState(false);
   const [proofJob, setProofJob] = useState(null);
   const [proofMode, setProofMode] = useState('view');
   const [proofPhotos, setProofPhotos] = useState([null, null, null, null, null]);
@@ -204,6 +209,22 @@ export default function InstallationsScreen() {
       Alert.alert('Error', err.message || 'Failed to save installation');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteInstallation = async () => {
+    if (!canDelete || !installationToDelete || deletingInstallation) return;
+    const jobId = installationToDelete.id;
+    setDeletingInstallation(true);
+    try {
+      await apiDelete(`/installations/${jobId}`);
+      setInstallations(current => current.filter(job => job.id !== jobId));
+      setInstallationToDelete(null);
+      Alert.alert('Deleted', 'Installation deleted.');
+    } catch (error) {
+      Alert.alert('Delete failed', error.message || 'Could not delete this installation.');
+    } finally {
+      setDeletingInstallation(false);
     }
   };
 
@@ -413,6 +434,16 @@ export default function InstallationsScreen() {
                     {canWrite && item.status !== 'Completed' ? (
                       <TouchableOpacity style={[styles.editJobBtn, { borderColor: colors.primary }]} onPress={() => openEditModal(item)} accessibilityRole="button" accessibilityLabel={`Edit installation for ${item.customer}`}>
                         <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {canDelete ? (
+                      <TouchableOpacity
+                        style={[styles.deleteJobBtn, { borderColor: 'rgba(239,68,68,0.35)', backgroundColor: 'rgba(239,68,68,0.10)' }]}
+                        onPress={() => setInstallationToDelete(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete installation for ${item.customer}`}
+                      >
+                        <Trash2 size={16} color="#ef4444" />
                       </TouchableOpacity>
                     ) : null}
                   </View>
@@ -634,6 +665,16 @@ export default function InstallationsScreen() {
           </View> : null}
         </View>
       </AnimatedModal>
+      <ConfirmDeleteModal
+        visible={Boolean(installationToDelete)}
+        onClose={() => { if (!deletingInstallation) setInstallationToDelete(null); }}
+        onConfirm={handleDeleteInstallation}
+        loading={deletingInstallation}
+        title="Delete Installation"
+        subtitle={installationToDelete ? `${installationToDelete.type} · ${installationToDelete.vehicle || installationToDelete.site || installationToDelete.customer}` : ''}
+        message="This permanently deletes the installation and its completion proof. The customer record will remain. This action cannot be undone."
+        confirmText="Delete Installation"
+      />
     </View>
   );
 }
@@ -739,6 +780,7 @@ const styles = StyleSheet.create({
   },
   footerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 10 },
   editJobBtn: { minHeight: 36, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  deleteJobBtn: { width: 36, height: 36, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
