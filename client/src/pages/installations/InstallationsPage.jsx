@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
-import { X, CheckCircle2, Plus } from 'lucide-react'
+import { X, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { apiDownload, apiGetAll, apiPost, apiUpload } from '../../utils/api'
+import { apiDelete, apiDownload, apiGetAll, apiPost, apiUpload } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
+import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
 function proofPhotoCount(value) {
   if (!value) return 0
@@ -38,6 +39,7 @@ export default function InstallationsPage() {
   const isGpsInstaller = user?.role === 'gps_installer'
   const isCctvInstaller = user?.role === 'cctv_technician'
   const canManage = ['super_admin', 'director', 'installation_manager'].includes(user?.role)
+  const canDelete = user?.role === 'super_admin'
 
   const [activeTab, setActiveTab] = useState(() => {
     if (user?.role === 'cctv_technician') return 'cctv'
@@ -50,6 +52,8 @@ export default function InstallationsPage() {
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const [selectedJob, setSelectedJob] = useState(null)
   const [proofJob, setProofJob] = useState(null)
+  const [installationToDelete, setInstallationToDelete] = useState(null)
+  const [deletingInstallation, setDeletingInstallation] = useState(false)
   const [submittingReport, setSubmittingReport] = useState(false)
   const [reportForm, setReportForm] = useState({
     cameras: 4, nvrSerial: '', photos: [null, null, null, null, null], note: ''
@@ -109,6 +113,20 @@ export default function InstallationsPage() {
       setCctvModal(false)
       setCctvForm({ customer: '', site: '', cameras: 4, dvr: 'Hikvision 8ch', tech: '', date: '', survey: false, signOff: false })
     } catch (error) { toast.error(error.message) }
+  }
+
+  const handleDeleteInstallation = async () => {
+    if (!canDelete || !installationToDelete || deletingInstallation) return
+    const { id, type } = installationToDelete
+    setDeletingInstallation(true)
+    try {
+      await apiDelete(`/installations/${id}`)
+      if (type === 'GPS') setGpsList(current => current.filter(job => job.id !== id))
+      else setCctvList(current => current.filter(job => job.id !== id))
+      setInstallationToDelete(null)
+      toast.success('Installation deleted')
+    } catch (error) { toast.error(error.message) }
+    finally { setDeletingInstallation(false) }
   }
 
   const handlePhotoChange = (index, file) => {
@@ -269,6 +287,17 @@ export default function InstallationsPage() {
                         View proof ({proofPhotoCount(g.reportPhoto)})
                       </button>
                     )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        title={`Delete installation for ${g.vehicle || g.customer}`}
+                        aria-label={`Delete installation for ${g.vehicle || g.customer}`}
+                        onClick={() => setInstallationToDelete(g)}
+                        style={{ width: 32, height: 32, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer', marginLeft: 8 }}
+                      >
+                        <Trash2 size={15} style={{ color: '#ef4444' }} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -334,6 +363,17 @@ export default function InstallationsPage() {
                     {c.status === 'Completed' && (
                       <button type="button" className="btn-secondary" onClick={() => setProofJob(c)}>
                         View proof ({proofPhotoCount(c.reportPhoto)})
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        title={`Delete CCTV installation for ${c.customer}`}
+                        aria-label={`Delete CCTV installation for ${c.customer}`}
+                        onClick={() => setInstallationToDelete(c)}
+                        style={{ width: 32, height: 32, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer', marginLeft: 8 }}
+                      >
+                        <Trash2 size={15} style={{ color: '#ef4444' }} />
                       </button>
                     )}
                   </td>
@@ -659,6 +699,16 @@ export default function InstallationsPage() {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={Boolean(installationToDelete)}
+        onClose={() => { if (!deletingInstallation) setInstallationToDelete(null) }}
+        onConfirm={handleDeleteInstallation}
+        loading={deletingInstallation}
+        title="Delete Installation"
+        subtitle={installationToDelete ? `${installationToDelete.type} · ${installationToDelete.vehicle || installationToDelete.site || installationToDelete.customer}` : ''}
+        message="This permanently deletes the installation and its completion proof. The customer record will remain. This action cannot be undone."
+        confirmText="Delete Installation"
+      />
     </div>
   )
 }

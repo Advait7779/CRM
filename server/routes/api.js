@@ -990,13 +990,13 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
   }));
 
   router.delete(`/${routeName}/:id`, authMiddleware, checkRole(config.roles), asyncHandler(async (req, res) => {
+    if (routeName === 'installations' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Only Super Admin can delete installations.' });
+    }
     const delegate = prisma[config.model];
     const id = prismaId(config.model, req.params.id);
     const record = await delegate.findUnique({ where: { id }, ...(await compatibilitySelect(config.model)) });
     if (!record) return res.status(404).json({ message: `${routeName.slice(0, -1)} not found.` });
-    if (routeName === 'installations' && (req.user.role === 'gps_installer' || req.user.role === 'cctv_technician')) {
-      return res.status(403).json({ message: 'Installers are not permitted to delete installations.' });
-    }
     if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     if (routeName === 'customers') {
       const relatedCount = await Promise.all([
@@ -1015,6 +1015,21 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
       if (paymentCount) return res.status(409).json({ message: 'Paid or partially paid invoices cannot be deleted.' });
     }
     await delegate.delete({ where: { id }, ...(await compatibilitySelect(config.model)) });
+    if (routeName === 'installations') {
+      for (const storedValue of [record.reportPhoto, record.reportSignature].filter(Boolean)) {
+        let storedNames = [storedValue];
+        try {
+          const parsed = JSON.parse(storedValue);
+          if (Array.isArray(parsed)) storedNames = parsed;
+        } catch {}
+        for (const storedName of storedNames) {
+          if (typeof storedName !== 'string') continue;
+          fs.unlink(path.join(uploadDir, path.basename(storedName)), (error) => {
+            if (error && error.code !== 'ENOENT') console.error('[Storage] Failed to delete installation proof:', error.message);
+          });
+        }
+      }
+    }
     await audit(req, 'delete', routeName, req.params.id);
     res.json({ message: 'Deleted successfully.' });
   }));
