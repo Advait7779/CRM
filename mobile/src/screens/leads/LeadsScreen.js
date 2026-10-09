@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import {
   View,
   Text,
@@ -13,7 +15,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { apiGet, apiGetAll, apiPost, apiPut } from '../../config/api';
+import { apiGet, apiGetAll, apiPost, apiPut, getAuthToken, getServerUrl } from '../../config/api';
 import Header from '../../components/common/Header';
 import SearchInput from '../../components/common/SearchInput';
 import Badge from '../../components/common/Badge';
@@ -26,6 +28,7 @@ import {
   Phone,
   MessageCircle,
   Calendar,
+  Download,
   User,
   X,
 } from 'lucide-react-native';
@@ -67,6 +70,7 @@ export default function LeadsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('All');
+  const [exporting, setExporting] = useState(false);
   const [productOptions, setProductOptions] = useState([]);
 
   // Modal State
@@ -188,10 +192,42 @@ export default function LeadsScreen() {
       (lead.name || '').toLowerCase().includes(search.toLowerCase()) ||
       (lead.phone || '').includes(search) ||
       (lead.company || '').toLowerCase().includes(search.toLowerCase()) ||
-      (lead.service || '').toLowerCase().includes(search.toLowerCase());
+      (lead.service || '').toLowerCase().includes(search.toLowerCase()) ||
+      (lead.justdialProduct || '').toLowerCase().includes(search.toLowerCase());
 
     return matchSearch && leadMatchesGroup(lead, selectedGroup);
   });
+
+  const handleDownloadExcel = async () => {
+    if (!filteredLeads.length || exporting) return;
+    setExporting(true);
+    try {
+      const [baseUrl, token] = await Promise.all([getServerUrl(), getAuthToken()]);
+      if (!baseUrl || !token) throw new Error('Please log in again to download leads.');
+      const query = `group=${encodeURIComponent(selectedGroup)}&search=${encodeURIComponent(search.trim())}`;
+      const slug = selectedGroup.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      const filename = `leads-${slug}-${date}.xlsx`;
+      const result = await FileSystem.downloadAsync(
+        `${baseUrl}/leads-export.xlsx?${query}`,
+        `${FileSystem.documentDirectory}${filename}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (result.status !== 200) throw new Error(`Download failed (HTTP ${result.status}).`);
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(result.uri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Save or share leads Excel file'
+        });
+      } else {
+        Alert.alert('Excel file saved', result.uri);
+      }
+    } catch (error) {
+      Alert.alert('Excel download failed', error.message || 'Could not download leads.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -256,6 +292,21 @@ export default function LeadsScreen() {
           overScrollMode="never"
           scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            <View style={styles.exportRow}>
+              <Text style={[styles.exportCount, { color: colors.textMuted }]}>{filteredLeads.length} leads in this view</Text>
+              <TouchableOpacity
+                style={[styles.exportBtn, { backgroundColor: colors.primary }, (!filteredLeads.length || exporting) && styles.exportBtnDisabled]}
+                onPress={handleDownloadExcel}
+                disabled={!filteredLeads.length || exporting}
+                accessibilityRole="button"
+                accessibilityLabel={`Download ${filteredLeads.length} leads as Excel`}
+              >
+                <Download size={15} color="#ffffff" />
+                <Text style={styles.exportBtnText}>{exporting ? 'Preparing…' : 'Download Excel'}</Text>
+              </TouchableOpacity>
+            </View>
+          }
           ListEmptyComponent={
             <EmptyState
               title="No leads in this view"
@@ -574,6 +625,32 @@ const styles = StyleSheet.create({
     padding: 14,
     paddingBottom: 40,
     gap: 12,
+  },
+  exportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  exportCount: {
+    flexShrink: 1,
+    fontSize: 12,
+  },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  exportBtnDisabled: {
+    opacity: 0.5,
+  },
+  exportBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   leadCard: {
     borderRadius: 16,

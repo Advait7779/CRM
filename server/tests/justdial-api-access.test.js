@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const ExcelJS = require('exceljs');
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'justdial-api-access-test-secret-only';
@@ -74,6 +75,16 @@ test('Leads API scopes Justdial enquiries per user and Settings API keeps all 17
   assert.equal((await request(2, '/leads/12', 'PUT', { status: 'Contacted' })).status, 404);
   assert.equal((await request(2, '/leads/11')).status, 200);
   assert.equal((await request(3, '/leads/11')).status, 404);
+
+  const exportResponse = await fetch(`${base}/leads-export.xlsx?group=CCTV`, {
+    headers: { Authorization: `Bearer ${jwt.sign({ id: 2, tokenVersion: 0 }, process.env.JWT_SECRET)}` }
+  });
+  assert.equal(exportResponse.status, 200);
+  assert.match(exportResponse.headers.get('content-type'), /spreadsheetml/);
+  const exported = await new ExcelJS.Workbook().xlsx.load(Buffer.from(await exportResponse.arrayBuffer()));
+  assert.equal(exported.getWorksheet('Leads').getCell('B6').value, 'Camera enquiry');
+  assert.equal(exported.getWorksheet('Leads').getCell('B7').value, null);
+  assert.equal((await request(2, '/leads-export.xlsx?group=invalid')).status, 400);
 
   const initial = await request(1, '/settings');
   assert.equal(initial.status, 200);

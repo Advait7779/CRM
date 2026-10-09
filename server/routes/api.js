@@ -13,6 +13,7 @@ const { sendMultiChannelNotification } = require('../services/notificationServic
 const { ALL_WEBHOOK_SETTING_KEYS, sendSavedWebhookNotifications, sendNewLeadSmsNotification } = require('../services/savedWebhookNotifications');
 const { isGroupMember, groupAccessWhere } = require('../utils/accessPolicy');
 const { JUSTDIAL_PRODUCTS, ASSIGNABLE_PRODUCTS, classifyJustdialCategory, validProductSelection, leadAccessWhere, canAccessLead } = require('../services/justdialProducts');
+const { LEAD_GROUPS, filterLeads, buildLeadsWorkbook } = require('../utils/leadWorkbook');
 
 const router = express.Router();
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -577,6 +578,27 @@ router.put('/users/:id/password', authMiddleware, checkRole(ADMIN), asyncHandler
   });
   await audit(req, 'password_reset', 'user', user.id);
   res.json({ message: 'User password reset.' });
+}));
+
+router.get('/leads-export.xlsx', authMiddleware, checkRole(SALES), asyncHandler(async (req, res) => {
+  const group = String(req.query.group || 'All');
+  const search = String(req.query.search || '');
+  if (!LEAD_GROUPS.includes(group) || search.length > 200) {
+    return res.status(400).json({ message: 'Invalid lead export filter.' });
+  }
+  const records = await prisma.leads.findMany({
+    where: leadAccessWhere(req.user),
+    orderBy: { createdAt: 'desc' },
+    ...(await compatibilitySelect('leads'))
+  });
+  const visibleLeads = filterLeads(records, group, search);
+  const workbook = buildLeadsWorkbook(visibleLeads, group);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const slug = group.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="leads-${slug}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(Buffer.from(buffer));
 }));
 
 for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
-import { apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
+import { apiDownload, apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
-import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, UserCheck } from 'lucide-react'
+import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, UserCheck, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { LEAD_GROUPS, leadMatchesGroup, getLeadDate } from './leadData'
+import { localDateString } from '../../utils/date'
 
 const LEAD_STATUSES = ['New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost']
 const LEAD_SOURCES  = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial']
@@ -20,35 +22,6 @@ const SOURCE_COLOR = {
 const STATUS_COLOR = {
   'New': '#60a5fa', 'Contacted': '#c084fc', 'Demo Given': '#f59e0b',
   'Quotation Sent': '#fb923c', 'Negotiation': '#f97316', 'Won': '#10b981', 'Lost': '#ef4444', 'Converted': '#10b981'
-}
-
-const leadDateFormatter = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
-const leadTimeFormatter = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' })
-
-function getLeadDate(lead) {
-  const rawDate = lead.source === 'Justdial' ? lead.justdialPayload?.date : null
-  const enquiryDate = typeof rawDate === 'string' ? rawDate.trim() : ''
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(enquiryDate)
-  if (match) {
-    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-    if (date.toISOString().slice(0, 10) === enquiryDate) {
-      const rawTime = lead.justdialPayload?.time
-      const enquiryTime = typeof rawTime === 'string' ? rawTime.trim() : ''
-      return {
-        date: leadDateFormatter.format(date),
-        time: /^\d{2}:\d{2}/.test(enquiryTime) ? enquiryTime.slice(0, 5) : '',
-        title: 'Justdial enquiry date'
-      }
-    }
-  }
-
-  const createdAt = lead.createdAt ? new Date(lead.createdAt) : null
-  if (!createdAt || Number.isNaN(createdAt.getTime())) return { date: '—', time: '', title: 'Lead date unavailable' }
-  return {
-    date: leadDateFormatter.format(createdAt),
-    time: leadTimeFormatter.format(createdAt),
-    title: lead.source === 'Justdial' ? 'Date received by CRM' : 'Date added to CRM'
-  }
 }
 
 const EMPTY_FORM = {
@@ -162,11 +135,11 @@ export default function LeadsPage() {
   const [leads, setLeads]         = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
-  const [filterSource, setFilter] = useState('All')
-  const [reviewOnly, setReviewOnly] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState('All')
   const [modal, setModal]         = useState(null) // null | { lead, isNew }
   const [confirmConvertLead, setConfirmConvertLead] = useState(null)
   const [converting, setConverting] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     apiGetAll('/leads')
@@ -180,10 +153,24 @@ export default function LeadsPage() {
   }, [isAdmin])
 
   const filtered = leads.filter(l => {
-    const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || (l.company || '').toLowerCase().includes(search.toLowerCase())
-    const matchSrc    = filterSource === 'All' || l.source === filterSource
-    return matchSearch && matchSrc && (!reviewOnly || (l.source === 'Justdial' && (!l.justdialProduct || l.justdialProduct === 'Unclassified')))
+    const term = search.trim().toLowerCase()
+    const matchSearch = !term || [l.name, l.phone, l.company, l.service, l.justdialProduct].some(value => String(value || '').toLowerCase().includes(term))
+    return matchSearch && leadMatchesGroup(l, selectedGroup)
   })
+
+  const handleDownloadExcel = async () => {
+    if (!filtered.length || exporting) return
+    setExporting(true)
+    try {
+      const query = new URLSearchParams({ group: selectedGroup, search: search.trim() })
+      const groupName = selectedGroup.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')
+      await apiDownload(`/leads-export.xlsx?${query}`, `leads-${groupName}-${localDateString()}.xlsx`)
+    } catch (error) {
+      toast.error(`Could not download the Excel sheet: ${error.message}`)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const handleSave = async (form, id) => {
     try {
@@ -221,14 +208,19 @@ export default function LeadsPage() {
   return (
     <div className="animate-fade-in">
       {/* Header */}
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 className="page-title">Lead Management</h1>
           <p className="page-subtitle">{leads.length} total leads · {leads.filter(l => l.status === 'Won').length} won · {leads.filter(l => l.status === 'New').length} new</p>
         </div>
-        <button className="btn-primary" onClick={() => setModal({ lead: null, isNew: true })} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-          <Plus size={16} /> New Lead
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="btn-secondary" onClick={handleDownloadExcel} disabled={!filtered.length || exporting} style={{ whiteSpace: 'nowrap', opacity: filtered.length && !exporting ? 1 : 0.5 }} title={`Download ${filtered.length} visible leads as a formatted Excel workbook`}>
+            <Download size={16} /> {exporting ? 'Preparing Excel…' : `Download Excel (${filtered.length})`}
+          </button>
+          <button className="btn-primary" onClick={() => setModal({ lead: null, isNew: true })} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+            <Plus size={16} /> New Lead
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -238,17 +230,16 @@ export default function LeadsPage() {
           <input className="input-field" style={{ paddingLeft: 34, height: 38 }} placeholder="Search leads..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {['All', ...LEAD_SOURCES].map(src => (
-            <button key={src} onClick={() => setFilter(src)} style={{
+          {LEAD_GROUPS.map(group => (
+            <button key={group} type="button" onClick={() => setSelectedGroup(group)} style={{
               padding: '6px 14px', borderRadius: 8, border: '1px solid',
-              borderColor: filterSource === src ? '#6366f1' : 'var(--border-subtle)',
-              background: filterSource === src ? 'rgba(99,102,241,0.12)' : 'transparent',
-              color: filterSource === src ? '#4f46e5' : 'var(--text-secondary)',
-              fontWeight: filterSource === src ? 700 : 500,
+              borderColor: selectedGroup === group ? '#6366f1' : 'var(--border-subtle)',
+              background: selectedGroup === group ? 'rgba(99,102,241,0.12)' : 'transparent',
+              color: selectedGroup === group ? '#4f46e5' : 'var(--text-secondary)',
+              fontWeight: selectedGroup === group ? 700 : 500,
               fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
-            }}>{src}</button>
+            }}>{group}</button>
           ))}
-          {isAdmin && <button type="button" onClick={() => setReviewOnly(value => !value)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #f59e0b', background: reviewOnly ? 'rgba(245,158,11,0.16)' : 'transparent', color: '#b45309', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Needs Review ({leads.filter(l => l.source === 'Justdial' && (!l.justdialProduct || l.justdialProduct === 'Unclassified')).length})</button>}
         </div>
       </div>
 
