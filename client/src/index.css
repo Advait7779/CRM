@@ -605,9 +605,6 @@ header.app-topbar {
 }
 
 @media (max-width: 480px) {
-  .topbar-search {
-    max-width: 140px !important;
-  }
   .page-title {
     font-size: 20px;
   }
@@ -637,4 +634,3 @@ header.app-topbar {
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
-

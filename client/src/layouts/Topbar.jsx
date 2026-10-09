@@ -2,9 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
-import { Bell, Search, LogOut, Settings, User, CheckCheck, Calendar, Menu } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { apiGet } from '../utils/api'
+import { Bell, LogOut, Settings, User, CheckCheck, Calendar, Menu } from 'lucide-react'
 
 const notifIcons = { lead: '🎯', renewal: '🔄', ticket: '🎫', payment: '💰', install: '🔧' }
 
@@ -13,12 +11,8 @@ export default function Topbar({ setMobileOpen, onLogoutClick }) {
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications()
   const navigate = useNavigate()
   const location = useLocation()
-  const showSearch = ['/leads', '/customers', '/quotations', '/installations', '/accounts', '/renewals', '/tickets', '/inventory', '/employees', '/users', '/tasks', '/my-work', '/hrms'].some(p => location.pathname.startsWith(p))
   const [notifOpen, setNotifOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [searching, setSearching] = useState(false)
   const notifRef  = useRef(null)
   const profileRef = useRef(null)
 
@@ -39,25 +33,6 @@ export default function Topbar({ setMobileOpen, onLogoutClick }) {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
-
-  useEffect(() => {
-    const query = search.trim()
-    if (query.length < 2) {
-      setSearchResults([])
-      return undefined
-    }
-    const timer = window.setTimeout(async () => {
-      setSearching(true)
-      try {
-        setSearchResults(await apiGet(`/search?q=${encodeURIComponent(query)}`))
-      } catch (error) {
-        toast.error(error.message)
-      } finally {
-        setSearching(false)
-      }
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [search])
 
   return (
     <header className="app-topbar">
@@ -84,63 +59,6 @@ export default function Topbar({ setMobileOpen, onLogoutClick }) {
             Welcome Back, {user?.name?.split(' ')[0] || 'Super'} 👋
           </span>
         </div>
-      )}
-
-      {/* Search — only on data pages */}
-      {showSearch && (
-      <div className="topbar-search" style={{ flex: 1, maxWidth: 360, position: 'relative', display: 'flex', gap: 0 }}>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search leads, customers, invoices..."
-          className="input-field"
-          style={{ height: 38, fontSize: 13, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRight: 'none' }}
-        />
-        <button
-          type="button"
-          style={{
-            height: 38, width: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: '#6366f1', border: 'none', borderRadius: '0 10px 10px 0',
-            cursor: 'pointer', flexShrink: 0, color: 'white',
-          }}
-        >
-          <Search size={15} />
-        </button>
-        {search.trim().length >= 2 && (
-          <div style={{
-            position: 'absolute', top: 44, left: 0, right: 0, zIndex: 250,
-            background: 'var(--bg-card)', border: '1px solid var(--border-color)',
-            borderRadius: 12, boxShadow: '0 16px 40px rgba(0,0,0,0.28)',
-            maxHeight: 360, overflowY: 'auto'
-          }}>
-            {searching && <div style={{ padding: 14, color: 'var(--text-secondary)', fontSize: 13 }}>Searching...</div>}
-            {!searching && searchResults.length === 0 && (
-              <div style={{ padding: 14, color: 'var(--text-secondary)', fontSize: 13 }}>No matching records</div>
-            )}
-            {!searching && searchResults.map(result => (
-              <button
-                key={`${result.type}-${result.id}`}
-                onClick={() => {
-                  navigate(result.path)
-                  setSearch('')
-                  setSearchResults([])
-                }}
-                style={{
-                  width: '100%', padding: '11px 14px', display: 'flex', gap: 10,
-                  textAlign: 'left', background: 'transparent', border: 'none',
-                  borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', color: 'var(--text-primary)'
-                }}
-              >
-                <span style={{ color: '#6366f1', fontSize: 11, fontWeight: 700, width: 58 }}>{result.type}</span>
-                <span>
-                  <span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>{result.title}</span>
-                  <span style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{result.subtitle}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
