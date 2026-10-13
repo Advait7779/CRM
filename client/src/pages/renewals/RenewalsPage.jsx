@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiGetAll, apiPost } from '../../utils/api'
 import { localDateString } from '../../utils/date'
@@ -234,7 +235,7 @@ export default function RenewalsPage() {
 
       {/* Modal */}
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Add Renewal Schedule</h2>
@@ -279,12 +280,12 @@ export default function RenewalsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Confirmation Dialog Box in current theme */}
       {confirmAction && (
-        <div className="modal-backdrop" onClick={() => !actionLoading && setConfirmAction(null)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => !actionLoading && setConfirmAction(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
             {/* Header with Icon and Title */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
@@ -421,7 +422,7 @@ export default function RenewalsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

@@ -11,12 +11,17 @@ const DATE_ONLY_FIELDS = new Set([
 ]);
 
 const TIME_FIELDS = new Set(['checkIn', 'checkOut']);
+const ENUM_FIELDS = new Set(['status', 'source', 'type', 'dept', 'priority', 'direction', 'payrollStatus']);
 
 const ENUM_TO_PRISMA = new Map([
   ['Support Team', 'Support_Team'],
   ['In Progress', 'In_Progress'],
   ['Demo Given', 'Demo_Given'],
   ['Quotation Sent', 'Quotation_Sent'],
+  ['Future Prospect', 'Future_Prospect'],
+  ['Fake Enquiry', 'Fake_Enquiry'],
+  ['Not Interested', 'Not_Interested'],
+  ['Follow-Up Required', 'Follow_Up_Required'],
   ['Partially Paid', 'Partially_Paid'],
   ['Pending Approval', 'Pending_Approval'],
   ['Not Completed', 'Not_Completed']
@@ -79,7 +84,7 @@ function prepareData(model, data, { create = false } = {}) {
       prepared[key] = toDateOnly(value);
     } else if (TIME_FIELDS.has(key)) {
       prepared[key] = toTime(value);
-    } else if (typeof value === 'string' && ENUM_TO_PRISMA.has(value)) {
+    } else if (ENUM_FIELDS.has(key) && typeof value === 'string' && ENUM_TO_PRISMA.has(value)) {
       prepared[key] = ENUM_TO_PRISMA.get(value);
     } else {
       prepared[key] = value;
@@ -117,7 +122,7 @@ function prepareData(model, data, { create = false } = {}) {
 }
 
 function jsonReplacer(key, value) {
-  if (typeof value === 'string' && ENUM_FROM_PRISMA.has(value)) {
+  if (ENUM_FIELDS.has(key) && typeof value === 'string' && ENUM_FROM_PRISMA.has(value)) {
     return ENUM_FROM_PRISMA.get(value);
   }
   if (DATE_ONLY_FIELDS.has(key) && typeof value === 'string') {

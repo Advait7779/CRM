@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect, useRef } from 'react'
 import { apiGetAll, apiPost } from '../../utils/api'
 import { localDateString } from '../../utils/date'
@@ -278,7 +279,7 @@ export default function QuotationsPage() {
 
       {/* PDF Preview Drawer/Modal */}
       {previewPdf && (
-        <div className="modal-backdrop" onClick={() => setPreviewPdf(null)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setPreviewPdf(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 540, background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #e5e7eb', paddingBottom: 10, marginBottom: 20 }}>
               <span style={{ fontSize: 16, fontWeight: 700 }}>PDF Quotation Preview ({previewPdf.id})</span>
@@ -355,12 +356,12 @@ export default function QuotationsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* New Quote Modal */}
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Generate Quotation</h2>
@@ -512,7 +513,7 @@ export default function QuotationsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiGetAll, apiGet, apiPost, apiPut } from '../../utils/api'
 import ThemeSelect from '../../components/ThemeSelect'
@@ -180,7 +181,7 @@ export default function TasksPage() {
 
       {/* Assign Task Modal */}
       {modal && (
-        <div className="modal-backdrop" onClick={() => setModal(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Assign New Task</h2>
@@ -231,7 +232,7 @@ export default function TasksPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

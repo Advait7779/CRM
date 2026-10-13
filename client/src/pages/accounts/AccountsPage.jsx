@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, X, Receipt, Trash2, Printer, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -213,7 +214,7 @@ export default function AccountsPage() {
       )}
 
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={event => event.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}><h2>Create Invoice</h2><button onClick={() => setModalOpen(false)} style={{ border: 0, background: 'none', color: 'var(--text-secondary)' }}><X /></button></div>
             <form onSubmit={createInvoice}>
@@ -227,11 +228,11 @@ export default function AccountsPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn-primary">Create Invoice</button></div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {previewInvoice && (
-        <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setPreviewInvoice(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 580, background: '#ffffff', color: '#0f172a' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -290,14 +291,14 @@ export default function AccountsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {paymentModalInvoice && (() => {
         const existing = paidByInvoice.get(paymentModalInvoice.id) || 0
         const outstanding = Math.max(0, Number(paymentModalInvoice.total) - existing)
         return (
-          <div className="modal-backdrop" onClick={() => setPaymentModalInvoice(null)}>
+          <ModalBackdrop className="modal-backdrop" onClick={() => setPaymentModalInvoice(null)}>
             <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Record Payment Receipt</h2>
@@ -339,7 +340,7 @@ export default function AccountsPage() {
                 </div>
               </form>
             </div>
-          </div>
+          </ModalBackdrop>
         )
       })()}
 

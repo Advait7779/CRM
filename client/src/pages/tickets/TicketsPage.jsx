@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiGetAll, apiPost, apiPut } from '../../utils/api'
 import { Plus, Search, CheckCircle2 } from 'lucide-react'
@@ -175,7 +176,7 @@ export default function TicketsPage() {
 
       {/* Modal */}
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>File Support Ticket</h2>
@@ -228,7 +229,7 @@ export default function TicketsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

@@ -1,4 +1,5 @@
 const ExcelJS = require('exceljs')
+const { jsonReplacer } = require('./prismaData')
 
 const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services']
 const DIGITAL_PRODUCTS = new Set([
@@ -167,7 +168,7 @@ function buildLeadsWorkbook(leads, group = 'All', exportedAt = new Date()) {
       source: cellText(lead.source),
       leadDate: leadExcelDate(lead),
       receivedAt: localExcelDate(lead.createdAt),
-      status: cellText(lead.status),
+      status: cellText(jsonReplacer('status', lead.status)),
       exec: cellText(lead.exec),
       followUp: isoExcelDate(lead.followUp),
       notes: notesPreview(lead.notes)

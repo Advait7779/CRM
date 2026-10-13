@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiGetAll, apiPost } from '../../utils/api'
 import ThemeSelect from '../../components/ThemeSelect'
@@ -209,7 +210,7 @@ export default function InventoryPage() {
 
       {/* Stock In Modal */}
       {modalInOpen && (
-        <div className="modal-backdrop" onClick={() => setModalInOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalInOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Stock In (Purchase)</h2>
@@ -240,12 +241,12 @@ export default function InventoryPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Stock Out Modal */}
       {modalOutOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOutOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOutOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Stock Out (Job Issue)</h2>
@@ -287,12 +288,12 @@ export default function InventoryPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* New Inventory Item Modal */}
       {modalNewItemOpen && (
-        <div className="modal-backdrop" onClick={() => setModalNewItemOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalNewItemOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Add New Inventory Item</h2>
@@ -380,7 +381,7 @@ export default function InventoryPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

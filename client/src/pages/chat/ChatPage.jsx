@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { Fragment, useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { chatDayKey, chatDayLabel, chatTime, chatTimestamp, chatPreviewDate, sortChatMessages, mergeChatPage } from '../../utils/chatDate'
 import { useAuth } from '../../context/AuthContext'
@@ -1553,18 +1554,9 @@ export default function ChatPage() {
       {/* POPUP FORM MODAL: CREATE TEAM GROUP (Separate option on this page)        */}
       {/* ========================================================================= */}
       {showCreateGroupModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '20px'
-          }}
+        <ModalBackdrop
+          className="app-modal-layer"
+          style={{ padding: '20px' }}
           onClick={() => setShowCreateGroupModal(false)}
         >
           <div
@@ -1838,23 +1830,14 @@ export default function ChatPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Info Modal */}
       {showInfoModal && activeContact && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '20px'
-          }}
+        <ModalBackdrop
+          className="app-modal-layer"
+          style={{ padding: '20px' }}
           onClick={() => setShowInfoModal(false)}
         >
           <div
@@ -1930,12 +1913,13 @@ export default function ChatPage() {
               <button className="btn-primary" onClick={() => setShowInfoModal(false)}>Close</button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Full-Screen Image Lightbox Preview Modal (WhatsApp Style) */}
       {previewImage && (
-        <div
+        <ModalBackdrop
+          className="app-modal-layer"
           style={{
             position: 'fixed',
             inset: 0,
@@ -2024,7 +2008,7 @@ export default function ChatPage() {
             }}
             onClick={e => e.stopPropagation()}
           />
-        </div>
+        </ModalBackdrop>
       )}
 
       <ConfirmDeleteModal

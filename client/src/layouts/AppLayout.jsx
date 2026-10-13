@@ -1,3 +1,4 @@
+import ModalBackdrop from '../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
@@ -30,7 +31,7 @@ export default function AppLayout() {
 
       {/* Logout Confirmation Dialog */}
       {logoutConfirmOpen && (
-        <div className="modal-backdrop" onClick={() => setLogoutConfirmOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setLogoutConfirmOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, textAlign: 'center', padding: 28 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Sign Out</h2>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 20 }}>Are you sure you want to sign out of your account?</p>
@@ -39,7 +40,7 @@ export default function AppLayout() {
               <button onClick={() => { setLogoutConfirmOpen(false); logout(); }} className="btn-danger" style={{ padding: '8px 16px', fontSize: 13 }}>Sign Out</button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

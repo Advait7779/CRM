@@ -1,7 +1,8 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiGetAll, apiPost, apiPut } from '../../utils/api'
+import { apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
 import { Plus, Search, X, Check, Eye, Pencil } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -28,12 +29,13 @@ const combineServices = (selected, others) => {
 
 const EMPTY_FORM = {
   name: '', contact: '', phone: '', email: '', gst: '', address: '',
-  services: [], otherServices: '', vehicles: 0, cctv: 0, domain: '', hosting: '', websiteUrl: '', renewalDate: '', status: 'Active'
+  services: [], otherServices: '', vehicles: 0, cctv: 0, domain: '', hosting: '', websiteUrl: '', renewalDate: '', status: 'Active', assignedTo: ''
 }
 
 export default function CustomersPage() {
   const navigate = useNavigate()
   const [customers, setCustomers] = useState([])
+  const [systemUsers, setSystemUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [serviceFilter, setServiceFilter] = useState('All')
@@ -46,6 +48,9 @@ export default function CustomersPage() {
       .then(data => setCustomers(data))
       .catch(err => toast.error('Failed to load customers: ' + err.message))
       .finally(() => setLoading(false))
+    apiGet('/system-users')
+      .then(data => setSystemUsers(Array.isArray(data) ? data : []))
+      .catch(() => toast.error('Could not load system users for customer assignment.'))
   }, [])
 
   const handleOpenCreate = () => {
@@ -71,7 +76,8 @@ export default function CustomersPage() {
       hosting: customer.hosting || '',
       websiteUrl: customer.websiteUrl || '',
       renewalDate: customer.renewalDate ? String(customer.renewalDate).slice(0, 10) : '',
-      status: customer.status || 'Active'
+      status: customer.status || 'Active',
+      assignedTo: customer.assignedTo || ''
     })
     setModalOpen(true)
   }
@@ -201,6 +207,7 @@ export default function CustomersPage() {
               <th>Phone</th>
               <th>Services</th>
               <th>Vehicles</th>
+              <th>Assigned To</th>
               <th>Next Renewal</th>
               <th>Status</th>
               <th>Action</th>
@@ -230,6 +237,7 @@ export default function CustomersPage() {
                   </div>
                 </td>
                 <td style={{ color: '#f1f5f9', fontWeight: 600 }}>{c.vehicles || '—'}</td>
+                <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{c.assignedTo || '—'}</td>
                 <td style={{ color: '#94a3b8', fontSize: 13 }}>{c.renewalDate || '—'}</td>
                 <td>
                   <span className={`badge ${c.status === 'Active' ? 'badge-success' : c.status === 'Overdue' ? 'badge-danger' : 'badge-warning'}`}>
@@ -270,7 +278,7 @@ export default function CustomersPage() {
 
       {/* Modal */}
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -397,7 +405,7 @@ export default function CustomersPage() {
                 </div>
               )}
 
-              {/* Renewal Date & Account Status */}
+              {/* Renewal Date, Account Status & Assign To */}
               <div className="form-grid-2" style={{ marginBottom: 20 }}>
                 <div className="form-group">
                   <label className="form-label">Renewal Date</label>
@@ -415,6 +423,21 @@ export default function CustomersPage() {
                     <option value="Inactive">Inactive</option>
                   </ThemeSelect>
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Assigned Executive</label>
+                  <ThemeSelect
+                    value={form.assignedTo || ''}
+                    onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))}
+                  >
+                    <option value="">Select Executive</option>
+                    {form.assignedTo && !systemUsers.some(u => u.name === form.assignedTo) && (
+                      <option value={form.assignedTo}>{form.assignedTo}</option>
+                    )}
+                    {systemUsers.map(u => (
+                      <option key={u.id} value={u.name}>{u.name}</option>
+                    ))}
+                  </ThemeSelect>
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -425,7 +448,7 @@ export default function CustomersPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
     </div>

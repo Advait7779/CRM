@@ -13,6 +13,19 @@ test('API display enums are converted in both directions', () => {
   assert.equal(prepared.status, 'In_Progress');
   assert.equal(prepared.date.toISOString(), '2026-08-13T00:00:00.000Z');
   assert.equal(jsonReplacer('status', 'Partially_Paid'), 'Partially Paid');
+  for (const [label, stored] of [
+    ['Connected', 'Connected'],
+    ['Future Prospect', 'Future_Prospect'],
+    ['Fake Enquiry', 'Fake_Enquiry'],
+    ['Interested', 'Interested'],
+    ['Not Interested', 'Not_Interested'],
+    ['Follow-Up Required', 'Follow_Up_Required']
+  ]) {
+    assert.equal(prepareData('leads', { status: label }).status, stored);
+    assert.equal(jsonReplacer('status', stored), label);
+  }
+  assert.equal(prepareData('customers', { assignedTo: 'Future Prospect' }).assignedTo, 'Future Prospect');
+  assert.equal(prepareData('leads', { exec: 'Not Interested' }).exec, 'Not Interested');
 });
 
 test('Prisma identifiers preserve string financial document IDs', () => {

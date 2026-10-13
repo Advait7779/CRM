@@ -18,20 +18,13 @@ A full-stack service CRM for leads, customers, quotations, installations, billin
    npm.cmd run install:all
    ```
 
-3. Apply versioned Prisma migrations and create the initial administrator:
+3. Start the API and frontend together (this applies pending local migrations and checks API readiness first):
 
    ```powershell
-   npm.cmd run db:migrate
+   npm.cmd run dev
    ```
 
-4. Run the backend and frontend in separate terminals:
-
-   ```powershell
-   npm.cmd run dev:server
-   npm.cmd run dev:client
-   ```
-
-The Vite client runs on port 5174 and proxies `/api` to port 5001.
+Open `http://localhost:5174`. Keep this terminal running while using the local app. `dev:client` also runs the combined startup command; `dev:frontend` runs Vite alone when needed. The client proxies `/api` to the API on port 5001.
 
 ## Production checks
 

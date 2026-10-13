@@ -84,6 +84,7 @@ model Customers {
   hosting               String?                 @db.VarChar(255)
   renewalDate           DateTime?               @db.Date
   status                String?                 @default("Active") @db.VarChar(255)
+  assignedTo            String?                 @db.VarChar(255)
   latitude              Float?
   longitude             Float?
   createdAt             DateTime                @db.Timestamptz(6)
@@ -550,12 +551,18 @@ enum enum_Leads_source {
 enum enum_Leads_status {
   New
   Contacted
-  Demo_Given     @map("Demo Given")
-  Quotation_Sent @map("Quotation Sent")
+  Demo_Given         @map("Demo Given")
+  Quotation_Sent     @map("Quotation Sent")
   Negotiation
   Won
   Lost
   Converted
+  Connected
+  Future_Prospect    @map("Future Prospect")
+  Fake_Enquiry       @map("Fake Enquiry")
+  Interested
+  Not_Interested     @map("Not Interested")
+  Follow_Up_Required @map("Follow-Up Required")
 }
 
 enum enum_Payrolls_status {

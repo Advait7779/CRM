@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useEffect, useState } from 'react'
 import { Plus, X, Key, Eye, EyeOff, Trash2, ShieldCheck, ShieldAlert, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -237,7 +238,7 @@ export default function UsersPage() {
       </div>
 
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={event => event.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}><h2>Create System User</h2><button onClick={() => setModalOpen(false)} style={{ border: 0, background: 'none', color: 'var(--text-secondary)' }}><X /></button></div>
             <form onSubmit={createUser}>
@@ -252,10 +253,10 @@ export default function UsersPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn-primary">Create User</button></div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
       {resetModalUser && (
-        <div className="modal-backdrop" onClick={() => setResetModalUser(null)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setResetModalUser(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Reset Password</h2>
@@ -294,11 +295,11 @@ export default function UsersPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {editModalUser && (
-        <div className="modal-backdrop" onClick={() => setEditModalUser(null)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setEditModalUser(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Edit User Details</h2>
@@ -368,7 +369,7 @@ export default function UsersPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       <ConfirmDeleteModal

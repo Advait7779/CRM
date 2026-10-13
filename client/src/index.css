@@ -24,8 +24,8 @@
   --border-color: rgba(15, 23, 42, 0.12); /* Light border */
   --border-subtle: rgba(15, 23, 42, 0.08);  /* Subtly light inner lines */
   --glow-primary: rgba(99, 102, 241, 0.05);
-  --backdrop-bg: rgba(15, 23, 42, 0.4);
-  --backdrop-blur: 8px;
+  --backdrop-bg: rgba(15, 23, 42, 0.46);
+  --backdrop-blur: 16px;
 }
 
 * {

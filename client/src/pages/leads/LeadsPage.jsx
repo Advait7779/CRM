@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiDownload, apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
@@ -8,10 +9,17 @@ import toast from 'react-hot-toast'
 import { LEAD_GROUPS, leadMatchesGroup, getLeadDate } from './leadData'
 import { localDateString } from '../../utils/date'
 
-const LEAD_STATUSES = ['New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost']
+const ACTION_STATUSES = [
+  'Connected',
+  'Future Prospect',
+  'Fake Enquiry',
+  'Interested',
+  'Not Interested',
+  'Follow-Up Required'
+]
+const LEAD_STATUSES = ['New', ...ACTION_STATUSES]
 const LEAD_SOURCES  = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial']
 const SERVICES      = ['GPS Tracking', 'CCTV', 'Website Design', 'SMS Package', 'RCS Messaging', 'Voice Package', 'Digital Marketing']
-const EXECUTIVES    = ['Rahul Sharma', 'Priya Patel', 'Amit Singh', 'Sneha Joshi']
 
 const SOURCE_ICON = {
   Website: Globe, Facebook: Share2, WhatsApp: MessageCircle, Reference: User, Call: Phone, Justdial: Globe
@@ -20,8 +28,20 @@ const SOURCE_COLOR = {
   Website: '#6366f1', Facebook: '#3b82f6', WhatsApp: '#10b981', Reference: '#f59e0b', Call: '#8b5cf6', Justdial: '#f97316'
 }
 const STATUS_COLOR = {
-  'New': '#60a5fa', 'Contacted': '#c084fc', 'Demo Given': '#f59e0b',
-  'Quotation Sent': '#fb923c', 'Negotiation': '#f97316', 'Won': '#10b981', 'Lost': '#ef4444', 'Converted': '#10b981'
+  'New': '#60a5fa',
+  'Connected': '#6366f1',
+  'Future Prospect': '#8b5cf6',
+  'Fake Enquiry': '#ef4444',
+  'Interested': '#10b981',
+  'Not Interested': '#f97316',
+  'Follow-Up Required': '#f59e0b',
+  'Contacted': '#c084fc',
+  'Demo Given': '#f59e0b',
+  'Quotation Sent': '#fb923c',
+  'Negotiation': '#f97316',
+  'Won': '#10b981',
+  'Lost': '#ef4444',
+  'Converted': '#10b981'
 }
 
 const EMPTY_FORM = {
@@ -31,7 +51,7 @@ const EMPTY_FORM = {
 
 
 
-function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions }) {
+function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, systemUsers = [] }) {
   const [form, setForm] = useState(lead ? { ...lead } : { ...EMPTY_FORM })
 
   const handleSubmit = (e) => {
@@ -42,7 +62,7 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <ModalBackdrop className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 680 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>{isNew ? '+ New Lead' : 'Edit Lead'}</h2>
@@ -90,16 +110,23 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions }) {
             )}
             <div className="form-group">
               <label className="form-label">Lead Status</label>
-              <ThemeSelect className="input-field" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-                {form.status === 'Converted' && <option value="Converted">Converted</option>}
-                {LEAD_STATUSES.map(s => <option key={s}>{s}</option>)}
-              </ThemeSelect>
+              {lead?.status === 'Converted' || lead?.convertedCustomerId ? (
+                <div className="input-field" style={{ display: 'flex', alignItems: 'center' }}>Converted</div>
+              ) : (
+                <ThemeSelect className="input-field" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                  {form.status && !LEAD_STATUSES.includes(form.status) && <option value={form.status}>{form.status}</option>}
+                  {LEAD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </ThemeSelect>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">Assigned Executive</label>
-              <ThemeSelect className="input-field" value={form.exec} onChange={e => setForm(f => ({ ...f, exec: e.target.value }))}>
+              <ThemeSelect className="input-field" value={form.exec || ''} onChange={e => setForm(f => ({ ...f, exec: e.target.value }))}>
                 <option value="">Select Executive</option>
-                {EXECUTIVES.map(s => <option key={s}>{s}</option>)}
+                {form.exec && !systemUsers.some(u => u.name === form.exec) && (
+                  <option value={form.exec}>{form.exec}</option>
+                )}
+                {systemUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
               </ThemeSelect>
             </div>
             <div className="form-group">
@@ -124,7 +151,7 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions }) {
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }
 
@@ -132,6 +159,7 @@ export default function LeadsPage() {
   const { user } = useAuth()
   const isAdmin = ['super_admin', 'director'].includes(user?.role)
   const [productOptions, setProductOptions] = useState([])
+  const [systemUsers, setSystemUsers] = useState([])
   const [leads, setLeads]         = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
@@ -146,6 +174,9 @@ export default function LeadsPage() {
       .then(data => setLeads(data))
       .catch(err => toast.error('Failed to load leads: ' + err.message))
       .finally(() => setLoading(false))
+    apiGet('/system-users')
+      .then(data => setSystemUsers(Array.isArray(data) ? data : []))
+      .catch(() => toast.error('Could not load system users for lead assignment.'))
   }, [])
 
   useEffect(() => {
@@ -183,6 +214,17 @@ export default function LeadsPage() {
         setLeads(prev => [created, ...prev])
         toast.success('Lead created')
       }
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
+  const handleStatusChange = async (lead, nextStatus) => {
+    if (!nextStatus || nextStatus === lead.status) return
+    try {
+      const updated = await apiPut(`/leads/${lead.id}`, { status: nextStatus })
+      setLeads(prev => prev.map(l => l.id === lead.id ? updated : l))
+      toast.success(`Status updated to "${nextStatus}"`)
     } catch (err) {
       toast.error(err.message)
     }
@@ -255,6 +297,7 @@ export default function LeadsPage() {
             {filtered.map(l => {
               const SrcIcon = SOURCE_ICON[l.source] || Globe
               const leadDate = getLeadDate(l)
+              const statusColor = STATUS_COLOR[l.status] || '#6366f1'
               return (
                 <tr key={l.id}>
                   <td>
@@ -278,7 +321,7 @@ export default function LeadsPage() {
                     {leadDate.time && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>{leadDate.time}</div>}
                   </td>
                   <td>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: `${STATUS_COLOR[l.status]}20`, color: STATUS_COLOR[l.status] }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: `${statusColor}20`, color: statusColor, whiteSpace: 'nowrap' }}>
                       {l.status}
                     </span>
                   </td>
@@ -286,18 +329,42 @@ export default function LeadsPage() {
                   <td style={{ color: l.followUp ? '#f59e0b' : '#475569', fontSize: 13 }}>{l.followUp || '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {l.status !== 'Converted' ? (
+                      {l.status !== 'Converted' && !l.convertedCustomerId && <ThemeSelect
+                        value={l.status || 'New'}
+                        onChange={e => handleStatusChange(l, e.target.value)}
+                        style={{
+                          height: '26px',
+                          width: '92px',
+                          minWidth: '92px',
+                          maxWidth: '92px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          borderRadius: '6px',
+                          padding: '0 18px 0 7px',
+                          background: `${statusColor}12`,
+                          border: `1px solid ${statusColor}40`,
+                          color: statusColor
+                        }}
+                      >
+                        {!ACTION_STATUSES.includes(l.status) && (
+                          <option value={l.status || 'New'}>{l.status || 'New'}</option>
+                        )}
+                        {ACTION_STATUSES.map(status => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </ThemeSelect>}
+                      {l.status !== 'Converted' && !l.convertedCustomerId ? (
                         <button
                           onClick={() => setConfirmConvertLead(l)}
                           title="Convert Lead to Active Customer"
                           style={{
-                            width: 32, height: 32, borderRadius: 8,
+                            width: 28, height: 28, borderRadius: 7,
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)',
-                            cursor: 'pointer', transition: 'all 0.15s ease'
+                            cursor: 'pointer', transition: 'all 0.15s ease', flexShrink: 0
                           }}
                         >
-                          <UserCheck size={15} style={{ color: '#10b981' }} />
+                          <UserCheck size={14} style={{ color: '#10b981' }} />
                         </button>
                       ) : (
                         <span
@@ -306,7 +373,7 @@ export default function LeadsPage() {
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                             fontSize: 11, fontWeight: 600, color: '#10b981',
                             background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)',
-                            padding: '3px 8px', borderRadius: 8
+                            padding: '4px 7px', borderRadius: 7, whiteSpace: 'nowrap', flexShrink: 0
                           }}
                         >
                           <UserCheck size={12} /> Converted
@@ -325,6 +392,7 @@ export default function LeadsPage() {
         <LeadModal
           isAdmin={isAdmin}
           productOptions={productOptions}
+          systemUsers={systemUsers}
           lead={modal.lead}
           isNew={modal.isNew}
           onClose={() => setModal(null)}
@@ -333,7 +401,7 @@ export default function LeadsPage() {
       )}
 
       {confirmConvertLead && (
-        <div className="modal-backdrop" onClick={() => !converting && setConfirmConvertLead(null)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => !converting && setConfirmConvertLead(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
               <div style={{
@@ -418,7 +486,7 @@ export default function LeadsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   )

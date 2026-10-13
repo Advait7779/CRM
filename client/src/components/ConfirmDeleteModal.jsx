@@ -1,3 +1,4 @@
+import ModalBackdrop from './ModalBackdrop'
 import React from 'react'
 import { AlertTriangle } from 'lucide-react'
 
@@ -14,7 +15,7 @@ export default function ConfirmDeleteModal({
   if (!isOpen) return null
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <ModalBackdrop className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <div style={{
@@ -46,6 +47,6 @@ export default function ConfirmDeleteModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   )
 }

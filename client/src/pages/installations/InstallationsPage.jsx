@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useEffect, useState } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import { X, CheckCircle2, Plus, Trash2 } from 'lucide-react'
@@ -386,7 +387,7 @@ export default function InstallationsPage() {
 
       {/* GPS Modal */}
       {canManage && gpsModal && (
-        <div className="modal-backdrop" onClick={() => setGpsModal(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setGpsModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Allocate GPS Device</h2>
@@ -435,12 +436,12 @@ export default function InstallationsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* CCTV Modal */}
       {canManage && cctvModal && (
-        <div className="modal-backdrop" onClick={() => setCctvModal(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setCctvModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Create CCTV Setup Task</h2>
@@ -477,12 +478,12 @@ export default function InstallationsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Job Completion & Proof of Work Modal */}
       {reportModalOpen && selectedJob && (
-        <div className="modal-backdrop" onClick={() => setReportModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setReportModalOpen(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -676,10 +677,10 @@ export default function InstallationsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
       {proofJob && (
-        <div className="modal-backdrop" onClick={() => setProofJob(null)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setProofJob(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <h2 style={{ fontSize: 18, margin: 0 }}>Completion proof · {proofJob.customer}</h2>
@@ -697,7 +698,7 @@ export default function InstallationsPage() {
               </div>
             ) : <p style={{ color: 'var(--text-secondary)' }}>No proof images were saved for this older record.</p>}
           </div>
-        </div>
+        </ModalBackdrop>
       )}
       <ConfirmDeleteModal
         isOpen={Boolean(installationToDelete)}

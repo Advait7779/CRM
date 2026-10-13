@@ -1,3 +1,4 @@
+import ModalBackdrop from '../../components/ModalBackdrop'
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, X, LogOut, CheckCircle2, FileText, Printer, Eye, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -238,7 +239,7 @@ export default function EmployeesPage() {
       )}
 
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+        <ModalBackdrop className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal-box" onClick={event => event.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}><h2>Add Employee</h2><button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 0, color: 'var(--text-secondary)' }}><X /></button></div>
             <form onSubmit={createEmployee}>
@@ -253,14 +254,14 @@ export default function EmployeesPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn-primary">Create Employee</button></div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {payslipRow && (() => {
         const { row, employee } = payslipRow
         const net = Number(row.net ?? (Number(row.basic || 0) + Number(row.incentive || 0) - Number(row.deduction || 0)))
         return (
-          <div className="modal-backdrop" onClick={() => setPayslipRow(null)}>
+          <ModalBackdrop className="modal-backdrop" onClick={() => setPayslipRow(null)}>
             <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 520, padding: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -294,7 +295,7 @@ export default function EmployeesPage() {
                 <button className="btn-primary" onClick={() => window.print()}><Printer size={15} /> Print Payslip</button>
               </div>
             </div>
-          </div>
+          </ModalBackdrop>
         )
       })()}
 

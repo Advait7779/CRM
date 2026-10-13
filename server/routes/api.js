@@ -128,7 +128,7 @@ const RESOURCE_CONFIG = {
   },
   customers: {
     model: 'customers',
-    fields: ['name', 'contact', 'phone', 'email', 'gst', 'address', 'services', 'vehicles', 'cctv', 'domain', 'hosting', 'renewalDate', 'status', 'latitude', 'longitude'],
+    fields: ['name', 'contact', 'phone', 'email', 'gst', 'address', 'services', 'vehicles', 'cctv', 'domain', 'hosting', 'renewalDate', 'status', 'assignedTo', 'latitude', 'longitude'],
     required: ['name', 'phone'],
     roles: SALES,
     readRoles: ALL_STAFF
@@ -485,9 +485,16 @@ router.get('/justdial/products', authMiddleware, checkRole(ADMIN), (req, res) =>
   res.json({ assignable: ASSIGNABLE_PRODUCTS, unclassified: JUSTDIAL_PRODUCTS.UNCLASSIFIED });
 });
 
-router.get('/task-assignees', authMiddleware, checkRole(MANAGEMENT), asyncHandler(async (req, res) => {
+router.get('/task-assignees', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
   res.json(await prisma.users.findMany({
     where: { role: { in: ASSIGNABLE_USER_ROLES } },
+    select: { id: true, name: true, role: true },
+    orderBy: { name: 'asc' }
+  }));
+}));
+router.get('/system-users', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
+  res.json(await prisma.users.findMany({
+    where: { role: { in: ALL_STAFF } },
     select: { id: true, name: true, role: true },
     orderBy: { name: 'asc' }
   }));
@@ -832,6 +839,9 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     const payload = cleanBody(req.body, config.fields.filter((field) => field !== 'id'));
     if (routeName === 'leads') {
+      if ((record.status === 'Converted' || record.convertedCustomerId) && payload.status !== undefined && payload.status !== 'Converted') {
+        return res.status(409).json({ message: 'A converted lead cannot be given another status.' });
+      }
       const nextSource = payload.source ?? record.source;
       if (record.source === 'Justdial' && !ADMIN.includes(req.user.role)) {
         delete payload.source;
@@ -1058,6 +1068,7 @@ router.post('/leads/:id/convert', authMiddleware, checkRole(SALES), asyncHandler
           phone: lead.phone || '',
           email: lead.email || '',
           services: lead.service ? JSON.stringify([lead.service]) : JSON.stringify(['GPS Tracking']),
+          assignedTo: lead.exec || null,
           status: 'Active'
         }, { create: true })
       });

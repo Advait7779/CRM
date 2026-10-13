@@ -13,10 +13,11 @@ export default function ThemeSelect({ value, onChange, children, className = "",
       const rect = buttonRef.current.getBoundingClientRect()
       const spaceBelow = window.innerHeight - rect.bottom
       const openUpward = spaceBelow < 220 && rect.top > 220
+      const menuWidth = Math.min(window.innerWidth - 16, Math.max(rect.width, 150))
       setCoords({
         top: openUpward ? rect.top - 4 : rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
+        width: menuWidth,
         openUpward
       })
     }
@@ -123,6 +124,8 @@ export default function ThemeSelect({ value, onChange, children, className = "",
           justify: 'space-between',
           cursor: 'pointer',
           textAlign: 'left',
+          paddingTop: '0px',
+          paddingBottom: '0px',
           paddingLeft: '12px',
           paddingRight: '28px',
           background: 'var(--bg-card)',
@@ -147,7 +150,7 @@ export default function ThemeSelect({ value, onChange, children, className = "",
             transition: 'transform 0.2s ease',
             transform: isOpen ? 'rotate(180deg)' : 'none',
             position: 'absolute',
-            right: '8px',
+            right: '6px',
             top: '50%',
             marginTop: '-6px',
             pointerEvents: 'none'
@@ -165,7 +168,6 @@ export default function ThemeSelect({ value, onChange, children, className = "",
             bottom: coords.openUpward ? `${window.innerHeight - coords.top}px` : 'auto',
             left: `${coords.left}px`,
             width: `${coords.width}px`,
-            minWidth: '130px',
             background: 'var(--bg-card)',
             border: '1px solid var(--border-color)',
             borderRadius: '10px',
@@ -186,14 +188,15 @@ export default function ThemeSelect({ value, onChange, children, className = "",
                 style={{
                   width: '100%',
                   textAlign: 'left',
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   background: isSelected ? 'var(--accent-primary)' : 'transparent',
                   color: isSelected ? '#ffffff' : 'var(--text-primary)',
                   border: 'none',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   cursor: 'pointer',
                   transition: 'background 0.15s, color 0.15s',
                   display: 'block',
+                  whiteSpace: 'nowrap',
                   fontWeight: isSelected ? 600 : 400
                 }}
                 onMouseEnter={(e) => {
