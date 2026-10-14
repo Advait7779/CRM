@@ -246,6 +246,7 @@ model Leads {
   @@index([status], map: "leads_status")
   @@index([source], map: "leads_source")
   @@index([source, justdialProduct], map: "leads_justdial_product")
+  @@index([exec, justdialProduct], map: "leads_assignee_product")
 }
 
 model Notifications {

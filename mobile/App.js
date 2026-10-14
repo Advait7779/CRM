@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View } from 'react-native';
+import { BlurTargetView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
@@ -15,6 +16,7 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { canAccessScreen } from './src/config/permissions';
 import { NotificationProvider, useNotifications } from './src/context/NotificationContext';
 import { SidebarProvider } from './src/context/SidebarContext';
+import { ModalBlurContext } from './src/context/ModalBlurContext';
 import NotificationToast from './src/components/common/NotificationToast';
 import SidebarDrawer from './src/components/navigation/SidebarDrawer';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -67,9 +69,11 @@ function NotificationToastWrapper() {
 
 function MainApp() {
   const { isDark, colors } = useTheme();
+  const blurTargetRef = useRef(null);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ModalBlurContext.Provider value={blurTargetRef}>
+    <BlurTargetView ref={blurTargetRef} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.card} />
       <NotificationToastWrapper />
       <NavigationContainer
@@ -89,7 +93,8 @@ function MainApp() {
         <AppNavigator />
       </NavigationContainer>
       <SidebarDrawer navigationRef={navigationRef} />
-    </View>
+    </BlurTargetView>
+    </ModalBlurContext.Provider>
   );
 }
 

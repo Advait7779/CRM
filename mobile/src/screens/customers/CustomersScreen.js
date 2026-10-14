@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { apiGetAll, apiPost, apiPut } from '../../config/api';
+import { apiGet, apiGetAll, apiPost, apiPut } from '../../config/api';
 import Header from '../../components/common/Header';
 import SearchInput from '../../components/common/SearchInput';
 import Badge from '../../components/common/Badge';
@@ -25,6 +25,7 @@ import {
   Users,
   Plus,
   Phone,
+  User,
   ChevronRight,
   X
 } from 'lucide-react-native';
@@ -57,6 +58,7 @@ export default function CustomersScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedService, setSelectedService] = useState('All');
+  const [systemUsers, setSystemUsers] = useState([]);
 
   // Add / Edit Modal
   const [modalVisible, setModalVisible] = useState(false);
@@ -72,7 +74,8 @@ export default function CustomersScreen({ navigation }) {
     services: [],
     otherServices: '',
     renewalDate: '',
-    status: 'Active'
+    status: 'Active',
+    assignedTo: ''
   });
 
   const fetchCustomers = useCallback(async () => {
@@ -91,6 +94,12 @@ export default function CustomersScreen({ navigation }) {
     fetchCustomers();
   }, [fetchCustomers]);
 
+  useEffect(() => {
+    apiGet('/system-users')
+      .then(data => setSystemUsers(Array.isArray(data) ? data : []))
+      .catch(() => Alert.alert('Executives unavailable', 'Could not load system users for customer assignment.'));
+  }, []);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchCustomers();
@@ -108,7 +117,8 @@ export default function CustomersScreen({ navigation }) {
       services: ['GPS Tracking'],
       otherServices: '',
       renewalDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: 'Active'
+      status: 'Active',
+      assignedTo: ''
     });
     setModalVisible(true);
   };
@@ -125,7 +135,8 @@ export default function CustomersScreen({ navigation }) {
       services: parseServices(customer.services).filter(service => SERVICE_OPTIONS.includes(service)),
       otherServices: parseServices(customer.services).filter(service => !SERVICE_OPTIONS.includes(service)).join(', '),
       renewalDate: customer.renewalDate ? String(customer.renewalDate).slice(0, 10) : '',
-      status: customer.status || 'Active'
+      status: customer.status || 'Active',
+      assignedTo: customer.assignedTo || ''
     });
     setModalVisible(true);
   };
@@ -310,6 +321,10 @@ export default function CustomersScreen({ navigation }) {
                     <ChevronRight size={15} color={colors.textMuted} />
                   </View>
                 </View>
+                <View style={styles.assignedRow}>
+                  <User size={12} color={colors.primary} />
+                  <Text style={[styles.assignedText, { color: colors.textMuted }]}>Assigned to: {item.assignedTo || 'Unassigned'}</Text>
+                </View>
               </TouchableOpacity>
             );
           }}
@@ -436,6 +451,26 @@ export default function CustomersScreen({ navigation }) {
               multiline
               numberOfLines={3}
             />
+
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Assigned Executive</Text>
+            <View style={styles.servicesGrid}>
+              {[{ id: 'unassigned', name: '', label: 'Unassigned' },
+                ...(formData.assignedTo && !systemUsers.some(person => person.name === formData.assignedTo) ? [{ id: 'current', name: formData.assignedTo }] : []),
+                ...systemUsers].map(person => {
+                const selected = formData.assignedTo === person.name;
+                return (
+                  <TouchableOpacity
+                    key={person.id}
+                    style={[styles.serviceCheckChip, { backgroundColor: selected ? colors.primary : colors.cardSecondary, borderColor: selected ? colors.primary : colors.border }]}
+                    onPress={() => setFormData(current => ({ ...current, assignedTo: person.name }))}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[styles.serviceCheckText, { color: selected ? '#fff' : colors.text }]}>{person.label || person.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </ScrollView>
 
           <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
@@ -519,6 +554,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
     marginRight: 8,
+  },
+  assignedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  assignedText: {
+    fontSize: 11,
+    fontWeight: '500',
   },
   cardMetaRow: {
     flexDirection: 'row',

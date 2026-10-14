@@ -7,7 +7,7 @@ const DIGITAL_PRODUCTS = new Set([
 
 export function leadMatchesGroup(lead, group) {
   if (group === 'All') return true
-  if (lead.source === 'Justdial') {
+  if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor'
     if (group === 'CCTV') return lead.justdialProduct === 'CCTV'
     return DIGITAL_PRODUCTS.has(lead.justdialProduct)

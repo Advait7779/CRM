@@ -11,23 +11,39 @@ const config = require('../config/prisma');
 const { Prisma } = config;
 const users = [
   { id: 1, name: 'Admin', role: 'super_admin', email: 'admin@example.test', tokenVersion: 0, justdialProducts: [] },
-  { id: 2, name: 'CCTV', role: 'sales_executive', email: 'cctv@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] },
-  { id: 3, name: 'GPS', role: 'sales_executive', email: 'gps@example.test', tokenVersion: 0, justdialProducts: ['GPS & Fuel Sensor'] },
+  { id: 2, name: 'Shubhangi', role: 'sales_executive', email: 'cctv@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] },
+  { id: 3, name: 'GPS Executive', role: 'sales_executive', email: 'gps@example.test', tokenVersion: 0, justdialProducts: ['GPS & Fuel Sensor'] },
   { id: 4, name: 'CCTV too', role: 'sales_manager', email: 'cctv2@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] }
 ];
 const leads = [
-  { id: 11, name: 'Camera enquiry', phone: '9000000011', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', createdAt: new Date() },
-  { id: 12, name: 'Vehicle enquiry', phone: '9000000012', source: 'Justdial', service: 'GPS Tracking', justdialProduct: 'GPS & Fuel Sensor', createdAt: new Date() },
-  { id: 13, name: 'Unclear enquiry', phone: '9000000013', source: 'Justdial', service: 'Generator Dealer', justdialProduct: 'Unclassified', createdAt: new Date() },
-  { id: 14, name: 'Website lead', phone: '9000000014', source: 'Website', service: 'Website', justdialProduct: null, createdAt: new Date() }
+  { id: 11, name: 'Camera enquiry', phone: '9000000011', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', exec: 'Shubhangi', createdAt: new Date() },
+  { id: 12, name: 'Vehicle enquiry', phone: '9000000012', source: 'Justdial', service: 'GPS Tracking', justdialProduct: 'GPS & Fuel Sensor', exec: 'GPS Executive', createdAt: new Date() },
+  { id: 13, name: 'Unclear enquiry', phone: '9000000013', source: 'Justdial', service: 'Generator Dealer', justdialProduct: 'Unclassified', exec: 'Shubhangi', createdAt: new Date() },
+  { id: 14, name: 'Website lead', phone: '9000000014', source: 'Website', service: 'Website', justdialProduct: 'Website Development', exec: 'Other Executive', createdAt: new Date() },
+  { id: 15, name: 'Unassigned CCTV enquiry', phone: '9000000015', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', exec: null, createdAt: new Date() },
+  { id: 16, name: 'Other CCTV enquiry', phone: '9000000016', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', exec: 'CCTV too', createdAt: new Date() },
+  { id: 17, name: 'Assigned referral', phone: '9000000017', source: 'Reference', service: 'CCTV', justdialProduct: 'CCTV', exec: 'shubhangi', createdAt: new Date() },
+  { id: 18, name: 'Wrong product assigned', phone: '9000000018', source: 'Facebook', service: 'GPS Tracking', justdialProduct: 'GPS & Fuel Sensor', exec: 'Shubhangi', createdAt: new Date() }
 ];
+function matchesWhere(lead, where = {}) {
+  if (where.AND && !where.AND.every(clause => matchesWhere(lead, clause))) return false;
+  if (where.OR && !where.OR.some(clause => matchesWhere(lead, clause))) return false;
+  if (where.id !== undefined && lead.id !== where.id) return false;
+  if (where.source !== undefined) {
+    if (where.source && typeof where.source === 'object') {
+      if (lead.source === where.source.not) return false;
+    } else if (lead.source !== where.source) return false;
+  }
+  if (where.justdialProduct?.in && !where.justdialProduct.in.includes(lead.justdialProduct)) return false;
+  if (where.exec?.equals && String(lead.exec || '').toLowerCase() !== where.exec.equals.toLowerCase()) return false;
+  return true;
+}
 const settings = new Map();
 const prisma = {
   users: { async findUnique({ where }) { return users.find(user => user.id === where.id) || null; } },
   leads: {
     async findMany({ where }) {
-      const access = where.OR?.find(clause => clause.source === 'Justdial');
-      return leads.filter(lead => !access || lead.source !== 'Justdial' || access.justdialProduct.in.includes(lead.justdialProduct));
+      return leads.filter(lead => matchesWhere(lead, where));
     },
     async findUnique({ where }) { return leads.find(lead => lead.id === where.id) || null; }
   },
@@ -45,7 +61,7 @@ const prisma = {
 require.cache[require.resolve('../config/prisma')].exports = { ...config, prisma };
 const apiRouter = require('../routes/api');
 
-test('Leads API scopes Justdial enquiries per user and Settings API keeps all 17 URL fields', async t => {
+test('Leads API scopes assignments and products across sources while Settings keeps all 17 URL fields', async t => {
   const app = express();
   app.use(express.json());
   app.use('/api', apiRouter);
@@ -66,7 +82,7 @@ test('Leads API scopes Justdial enquiries per user and Settings API keeps all 17
     return { status: response.status, data: await response.json() };
   };
 
-  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14]], [2, [11, 14]], [3, [12, 14]], [4, [11, 14]]]) {
+  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14, 15, 16, 17, 18]], [2, [11, 17]], [3, [12]], [4, [11, 14, 15, 16, 17, 18]]]) {
     const result = await request(userId, '/leads');
     assert.equal(result.status, 200);
     assert.deepEqual(result.data.map(lead => lead.id), expectedIds);
@@ -74,6 +90,13 @@ test('Leads API scopes Justdial enquiries per user and Settings API keeps all 17
   assert.equal((await request(2, '/leads/12')).status, 404);
   assert.equal((await request(2, '/leads/12', 'PUT', { status: 'Contacted' })).status, 404);
   assert.equal((await request(2, '/leads/11')).status, 200);
+  assert.equal((await request(2, '/leads/15')).status, 404);
+  assert.equal((await request(2, '/leads/16')).status, 404);
+  assert.equal((await request(2, '/leads/14')).status, 404);
+  assert.equal((await request(2, '/leads/18')).status, 404);
+  assert.equal((await request(2, '/leads/18', 'PUT', { status: 'Contacted' })).status, 404);
+  assert.equal((await request(2, '/leads/17', 'PUT', { service: 'GPS Tracking', justdialProduct: 'CCTV' })).status, 403);
+  assert.equal((await request(2, '/leads', 'POST', { name: 'GPS enquiry', phone: '9000000019', source: 'Facebook', service: 'GPS Tracking', justdialProduct: 'CCTV' })).status, 403);
   assert.equal((await request(3, '/leads/11')).status, 404);
 
   const exportResponse = await fetch(`${base}/leads-export.xlsx?group=CCTV`, {
@@ -83,7 +106,8 @@ test('Leads API scopes Justdial enquiries per user and Settings API keeps all 17
   assert.match(exportResponse.headers.get('content-type'), /spreadsheetml/);
   const exported = await new ExcelJS.Workbook().xlsx.load(Buffer.from(await exportResponse.arrayBuffer()));
   assert.equal(exported.getWorksheet('Leads').getCell('B6').value, 'Camera enquiry');
-  assert.equal(exported.getWorksheet('Leads').getCell('B7').value, null);
+  assert.equal(exported.getWorksheet('Leads').getCell('B7').value, 'Assigned referral');
+  assert.equal(exported.getWorksheet('Leads').getCell('B8').value, null);
   assert.equal((await request(2, '/leads-export.xlsx?group=invalid')).status, 400);
 
   const initial = await request(1, '/settings');

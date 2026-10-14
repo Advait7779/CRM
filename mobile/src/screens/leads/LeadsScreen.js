@@ -33,7 +33,8 @@ import {
   X,
 } from 'lucide-react-native';
 
-const STATUS_LIST = ['All', 'New', 'Contacted', 'Demo Given', 'Quotation Sent', 'Negotiation', 'Won', 'Lost', 'Converted'];
+const ACTION_STATUSES = ['Connected', 'Future Prospect', 'Fake Enquiry', 'Interested', 'Not Interested', 'Follow-Up Required'];
+const STATUS_LIST = ['New', ...ACTION_STATUSES];
 const SOURCE_LIST = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial', 'Other'];
 const SERVICE_LIST = ['GPS Tracking', 'CCTV', 'CCTV Security', 'Website Design', 'Web Development', 'Software Development', 'SMS Package', 'WhatsApp WABA', 'RCS Messaging', 'Voice Package', 'Digital Marketing', 'AMC Support'];
 const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services'];
@@ -41,7 +42,7 @@ const DIGITAL_PRODUCTS = new Set(['SMS', 'WhatsApp WABA', 'RCS', 'Voice Call', '
 
 function leadMatchesGroup(lead, group) {
   if (group === 'All') return true;
-  if (lead.source === 'Justdial') {
+  if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor';
     if (group === 'CCTV') return lead.justdialProduct === 'CCTV';
     return DIGITAL_PRODUCTS.has(lead.justdialProduct);
@@ -72,6 +73,9 @@ export default function LeadsScreen() {
   const [selectedGroup, setSelectedGroup] = useState('All');
   const [exporting, setExporting] = useState(false);
   const [productOptions, setProductOptions] = useState([]);
+  const [systemUsers, setSystemUsers] = useState([]);
+  const [statusLead, setStatusLead] = useState(null);
+  const [savingStatus, setSavingStatus] = useState(false);
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -111,6 +115,12 @@ export default function LeadsScreen() {
     if (isAdmin) apiGet('/justdial/products').then(data => setProductOptions(data?.assignable || [])).catch(() => {});
   }, [isAdmin]);
 
+  useEffect(() => {
+    apiGet('/system-users')
+      .then(data => setSystemUsers(Array.isArray(data) ? data : []))
+      .catch(() => Alert.alert('Executives unavailable', 'Could not load system users for lead assignment.'));
+  }, []);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchLeads();
@@ -126,7 +136,7 @@ export default function LeadsScreen() {
       source: 'Website',
       service: 'GPS Tracking',
       status: 'New',
-      exec: user?.name || '',
+      exec: user?.role === 'sales_executive' ? user.name : '',
       followUp: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       notes: '',
       justdialProduct: 'Unclassified'
@@ -182,6 +192,23 @@ export default function LeadsScreen() {
       Alert.alert('Error', err.message || 'Failed to save lead');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleStatusChange = async (nextStatus) => {
+    if (!statusLead || savingStatus || nextStatus === statusLead.status) {
+      setStatusLead(null);
+      return;
+    }
+    setSavingStatus(true);
+    try {
+      const updated = await apiPut(`/leads/${statusLead.id}`, { status: nextStatus });
+      setLeads(current => current.map(lead => lead.id === statusLead.id ? updated : lead));
+      setStatusLead(null);
+    } catch (error) {
+      Alert.alert('Status update failed', error.message || 'Please try again.');
+    } finally {
+      setSavingStatus(false);
     }
   };
 
@@ -342,7 +369,7 @@ export default function LeadsScreen() {
                   </Text>
                 </View>
               </View>
-              {item.source === 'Justdial' ? <Text style={{ color: item.justdialProduct === 'Unclassified' ? '#b45309' : colors.textMuted, fontSize: 12 }}>{item.justdialProduct || 'Unclassified'}</Text> : null}
+              {item.justdialProduct ? <Text style={{ color: item.justdialProduct === 'Unclassified' ? '#b45309' : colors.textMuted, fontSize: 12 }}>{item.justdialProduct}</Text> : null}
               <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 5 }}>Lead date: {leadDate(item)}</Text>
 
               {/* Follow-up & Executive */}
@@ -402,7 +429,13 @@ export default function LeadsScreen() {
                 >
                   <Text style={[styles.editBtnText, { color: colors.text }]}>Edit</Text>
                 </TouchableOpacity>
-                {item.status !== 'Converted' ? <TouchableOpacity style={[styles.editBtn, { backgroundColor: 'rgba(16,185,129,0.12)' }]}
+                {item.status !== 'Converted' && !item.convertedCustomerId ? <TouchableOpacity
+                  style={[styles.editBtn, { backgroundColor: colors.cardSecondary }]}
+                  onPress={() => setStatusLead(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change status for ${item.name}`}
+                ><Text style={[styles.editBtnText, { color: colors.primary }]}>Status</Text></TouchableOpacity> : null}
+                {item.status !== 'Converted' && !item.convertedCustomerId ? <TouchableOpacity style={[styles.editBtn, { backgroundColor: 'rgba(16,185,129,0.12)' }]}
                   onPress={() => Alert.alert('Convert to Customer', `Convert ${item.name} into an active customer account?`, [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Convert', onPress: async () => {
@@ -415,6 +448,31 @@ export default function LeadsScreen() {
           )}
         />
       )}
+
+      <AnimatedModal visible={Boolean(statusLead)} onRequestClose={() => !savingStatus && setStatusLead(null)}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, padding: 18 }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Update Lead Status</Text>
+          <Text style={[styles.detailText, { color: colors.textMuted, marginTop: 4, marginBottom: 12 }]}>{statusLead?.name}</Text>
+          {statusLead?.status && !ACTION_STATUSES.includes(statusLead.status) ? (
+            <Text style={[styles.detailText, { color: colors.textMuted, marginBottom: 8 }]}>Current: {statusLead.status}</Text>
+          ) : null}
+          {ACTION_STATUSES.map(status => (
+            <TouchableOpacity
+              key={status}
+              style={[styles.statusOption, { backgroundColor: statusLead?.status === status ? 'rgba(99, 102, 241, 0.12)' : colors.cardSecondary, borderColor: statusLead?.status === status ? colors.primary : colors.border }]}
+              onPress={() => handleStatusChange(status)}
+              disabled={savingStatus}
+              accessibilityRole="button"
+              accessibilityState={{ selected: statusLead?.status === status }}
+            >
+              <Text style={[styles.choiceText, { color: colors.text }]}>{status}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={[styles.cancelBtn, { alignSelf: 'flex-end', marginTop: 12 }]} onPress={() => setStatusLead(null)} disabled={savingStatus}>
+            <Text style={{ color: colors.text }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </AnimatedModal>
 
       {/* Add / Edit Lead Modal */}
       <AnimatedModal visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
@@ -476,7 +534,7 @@ export default function LeadsScreen() {
                       borderColor: formData.service === svc ? colors.primary : colors.border
                     }
                   ]}
-                  onPress={() => setFormData({ ...formData, service: svc })}
+                  onPress={() => setFormData({ ...formData, service: svc, justdialProduct: undefined })}
                 >
                   <Text style={[styles.choiceText, { color: formData.service === svc ? '#fff' : colors.text }]}>
                     {svc}
@@ -486,12 +544,18 @@ export default function LeadsScreen() {
             </View>}
             {editingId && formData.source === 'Justdial' && isAdmin ? <TextInput
               style={[styles.formInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-              value={formData.service} onChangeText={service => setFormData(current => ({ ...current, service }))}
+              value={formData.service} onChangeText={service => setFormData(current => ({ ...current, service, justdialProduct: undefined }))}
               placeholder="Justdial service category" placeholderTextColor={colors.textMuted} /> : null}
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Pipeline Status</Text>
             <View style={styles.choiceRow}>
-              {STATUS_LIST.filter(s => s !== 'All' && (s !== 'Converted' || formData.status === 'Converted')).map((st, i) => (
+            {editingId && (formData.status === 'Converted' || leads.find(lead => lead.id === editingId)?.convertedCustomerId) ? (
+              <Text style={{ color: colors.text }}>Converted</Text>
+            ) : <>{formData.status && !STATUS_LIST.includes(formData.status) ? (
+              <TouchableOpacity style={[styles.choiceChip, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                <Text style={[styles.choiceText, { color: '#fff' }]}>{formData.status}</Text>
+              </TouchableOpacity>
+            ) : null}{STATUS_LIST.map((st, i) => (
                 <TouchableOpacity
                   key={i}
                   style={[
@@ -507,8 +571,27 @@ export default function LeadsScreen() {
                     {st}
                   </Text>
                 </TouchableOpacity>
-              ))}
+              ))}</>}
             </View>
+
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Assigned Executive</Text>
+            {user?.role === 'sales_executive' ? (
+              <Text style={[styles.detailText, { color: colors.text }]}>Assigned to you: {user.name}</Text>
+            ) : <View style={styles.choiceRow}>
+              {[{ id: 'unassigned', name: '', label: 'Unassigned' },
+                ...(formData.exec && !systemUsers.some(person => person.name === formData.exec) ? [{ id: 'current', name: formData.exec }] : []),
+                ...systemUsers].map(person => (
+                <TouchableOpacity
+                  key={person.id}
+                  style={[styles.choiceChip, { backgroundColor: formData.exec === person.name ? colors.primary : colors.cardSecondary, borderColor: formData.exec === person.name ? colors.primary : colors.border }]}
+                  onPress={() => setFormData(current => ({ ...current, exec: person.name }))}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: formData.exec === person.name }}
+                >
+                  <Text style={[styles.choiceText, { color: formData.exec === person.name ? '#fff' : colors.text }]}>{person.label || person.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>}
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Lead Source</Text>
             {editingId && formData.source === 'Justdial' && !isAdmin ? <Text style={{ color: colors.text }}>Justdial</Text> : <View style={styles.choiceRow}>
@@ -530,8 +613,8 @@ export default function LeadsScreen() {
                 </TouchableOpacity>
               ))}
             </View>}
-            {editingId && formData.source === 'Justdial' && isAdmin ? <>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Justdial Product Group</Text>
+            {editingId && isAdmin ? <>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Lead Product Group</Text>
               <View style={styles.choiceRow}>
                 {['Unclassified', ...productOptions].map(product => <TouchableOpacity key={product}
                   style={[styles.choiceChip, { borderColor: formData.justdialProduct === product ? colors.primary : colors.border, backgroundColor: formData.justdialProduct === product ? colors.primary : colors.cardSecondary }]}
@@ -716,8 +799,10 @@ const styles = StyleSheet.create({
   },
   cardFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    gap: 8,
     borderTopWidth: 1,
     paddingTop: 10,
     marginTop: 10,
@@ -746,6 +831,13 @@ const styles = StyleSheet.create({
   editBtnText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  statusOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderRadius: 9,
+    marginTop: 7,
   },
   modalOverlay: {
     flex: 1,

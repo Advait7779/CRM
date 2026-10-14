@@ -18,13 +18,15 @@ const LEAD_ROLES = ['sales_manager', 'sales_executive']
 function ProductAccessPicker({ role, selected, options, onChange }) {
   const hasFullAccess = role === 'director' || role === 'super_admin'
   const description = hasFullAccess
-    ? 'This role already sees every Justdial enquiry. Product selections do not limit its access.'
-    : LEAD_ROLES.includes(role)
-      ? 'Select the products this user can see. No selection means no Justdial enquiries.'
+    ? 'This role already sees every lead. Product selections do not limit its access.'
+    : role === 'sales_executive'
+      ? 'Select the products this user can see from every source. They see only leads assigned to their name. No selection means no leads.'
+      : role === 'sales_manager'
+        ? 'Select which Justdial products this manager can see. Other lead sources remain visible.'
       : 'You can save product selections for this role. To see or update those enquiries in Leads, change the role to Sales Manager or Sales Executive.'
   return (
     <div className="form-group" style={{ marginTop: 16 }}>
-      <label className="form-label">Justdial enquiry products</label>
+      <label className="form-label">Lead products</label>
       {options.length === 0 && <p style={{ fontSize: 12, color: '#b45309', margin: '0 0 10px' }}>Product options are unavailable. Restart the local backend and refresh this page.</p>}
       <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 10px' }}>{description}</p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -61,7 +63,7 @@ export default function UsersPage() {
   const createUser = async event => {
     event.preventDefault()
     if (form.password.length < 6) return toast.error('Initial password must be at least 6 characters')
-    if (form.justdialProducts.length && productOptions.length === 0) return toast.error('Restart the local backend before assigning Justdial products')
+    if (form.justdialProducts.length && productOptions.length === 0) return toast.error('Restart the local backend before assigning lead products')
     try {
       const created = await apiPost('/users', form)
       setUsers(current => [...current, created])
@@ -134,7 +136,7 @@ export default function UsersPage() {
   const handleSaveEdit = async event => {
     event.preventDefault()
     if (!editModalUser) return
-    if (editForm.justdialProducts.length && productOptions.length === 0) return toast.error('Restart the local backend before assigning Justdial products')
+    if (editForm.justdialProducts.length && productOptions.length === 0) return toast.error('Restart the local backend before assigning lead products')
     try {
       const updated = await apiPut(`/users/${editModalUser.id}`, editForm)
       setUsers(current => current.map(item => item.id === editModalUser.id ? { ...item, ...updated } : item))
@@ -173,7 +175,7 @@ export default function UsersPage() {
                       </ThemeSelect>
                     )}
                     <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 5 }}>
-                      {isSuperAdmin || user.role === 'director' ? 'Justdial: All products' : `Justdial: ${user.justdialProducts?.join(', ') || 'None assigned'}${LEAD_ROLES.includes(user.role) ? '' : ' (requires a sales role for Leads access)'}`}
+                      {isSuperAdmin || user.role === 'director' ? 'Lead products: All' : `${user.role === 'sales_manager' ? 'Justdial products' : 'Lead products'}: ${user.justdialProducts?.join(', ') || 'None assigned'}${LEAD_ROLES.includes(user.role) ? '' : ' (requires a sales role for Leads access)'}`}
                     </div>
                   </td>
                   <td>{new Date(user.createdAt).toLocaleDateString('en-IN')}</td>

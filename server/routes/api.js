@@ -509,7 +509,7 @@ router.get('/installation-staff', authMiddleware, checkRole(OPERATIONS), asyncHa
 router.post('/users', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
   const payload = cleanBody(req.body, ['name', 'email', 'phone', 'role', 'password']);
   if (req.body.justdialProducts !== undefined) {
-    if (!validProductSelection(req.body.justdialProducts)) return res.status(400).json({ message: 'Invalid Justdial products.' });
+    if (!validProductSelection(req.body.justdialProducts)) return res.status(400).json({ message: 'Invalid lead products.' });
     payload.justdialProducts = req.body.justdialProducts;
   }
   requireFields(payload, ['name', 'email', 'role', 'password']);
@@ -532,7 +532,7 @@ router.put('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async (r
   }
   const payload = cleanBody(req.body, ['name', 'email', 'phone', 'role']);
   if (req.body.justdialProducts !== undefined) {
-    if (!validProductSelection(req.body.justdialProducts)) return res.status(400).json({ message: 'Invalid Justdial products.' });
+    if (!validProductSelection(req.body.justdialProducts)) return res.status(400).json({ message: 'Invalid lead products.' });
     payload.justdialProducts = req.body.justdialProducts;
   }
   if (payload.email) {
@@ -672,12 +672,9 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     }
     const payload = cleanBody(req.body, config.fields);
     if (routeName === 'leads') {
-      if (payload.source === 'Justdial') {
-        payload.justdialProduct = classifyJustdialCategory(payload.service);
-        if (!canAccessLead(req.user, payload)) return res.status(403).json({ message: 'This Justdial product is not assigned to you.' });
-      } else {
-        delete payload.justdialProduct;
-      }
+      if (req.user.role === 'sales_executive') payload.exec = req.user.name;
+      payload.justdialProduct = classifyJustdialCategory(payload.service);
+      if (!canAccessLead(req.user, payload)) return res.status(403).json({ message: 'This lead is not assigned to you or its product is not permitted.' });
     }
     if (!payload.id && (routeName === 'quotations' || routeName === 'invoices')) {
       const prefix = routeName === 'quotations' ? 'QT' : 'INV';
@@ -839,6 +836,8 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     const payload = cleanBody(req.body, config.fields.filter((field) => field !== 'id'));
     if (routeName === 'leads') {
+      if (req.user.role === 'sales_executive') delete payload.exec;
+      if (!ADMIN.includes(req.user.role)) delete payload.justdialProduct;
       if ((record.status === 'Converted' || record.convertedCustomerId) && payload.status !== undefined && payload.status !== 'Converted') {
         return res.status(409).json({ message: 'A converted lead cannot be given another status.' });
       }
@@ -847,17 +846,15 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
         delete payload.source;
         delete payload.service;
         delete payload.justdialProduct;
-      } else if (nextSource === 'Justdial') {
+      } else {
         if (payload.justdialProduct !== undefined) {
-          if (!Object.values(JUSTDIAL_PRODUCTS).includes(payload.justdialProduct)) return res.status(400).json({ message: 'Invalid Justdial product.' });
-        } else if (payload.service !== undefined || record.source !== 'Justdial') {
+          if (!Object.values(JUSTDIAL_PRODUCTS).includes(payload.justdialProduct)) return res.status(400).json({ message: 'Invalid lead product.' });
+        } else if (payload.service !== undefined || !record.justdialProduct) {
           payload.justdialProduct = classifyJustdialCategory(payload.service ?? record.service);
         }
-      } else {
-        payload.justdialProduct = null;
       }
       if (!canAccessLead(req.user, { ...record, ...payload, source: record.source === 'Justdial' && !ADMIN.includes(req.user.role) ? 'Justdial' : nextSource })) {
-        return res.status(403).json({ message: 'This Justdial product is not assigned to you.' });
+        return res.status(403).json({ message: 'This lead is not assigned to you or its product is not permitted.' });
       }
     }
     await applyStableReferences(payload, config.model);

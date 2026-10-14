@@ -39,7 +39,6 @@ const ROLES = [
   'support_executive',
   'accounts'
 ];
-const LEAD_ROLES = ['sales_manager', 'sales_executive'];
 
 export default function UsersScreen() {
   const { colors } = useTheme();
@@ -126,7 +125,7 @@ export default function UsersScreen() {
       return;
     }
     if (formData.justdialProducts.length && !productOptions.length) {
-      Alert.alert('Unavailable', 'Justdial product options could not load. Please retry after the backend is ready.');
+      Alert.alert('Unavailable', 'Lead product options could not load. Please retry after the backend is ready.');
       return;
     }
 
@@ -217,7 +216,7 @@ export default function UsersScreen() {
               </View>
 
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                Justdial: {['super_admin', 'director'].includes(item.role) ? 'All products' : item.justdialProducts?.length ? item.justdialProducts.join(', ') : 'No products assigned'}
+                {item.role === 'sales_manager' ? 'Justdial products' : 'Lead products'}: {['super_admin', 'director'].includes(item.role) ? 'All products' : item.justdialProducts?.length ? item.justdialProducts.join(', ') : 'No products assigned'}
               </Text>
               {item.phone ? (
                 <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
@@ -311,9 +310,9 @@ export default function UsersScreen() {
                 ))}
               </View>
 
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Justdial enquiry products</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{formData.role === 'sales_manager' ? 'Justdial products' : 'Lead products'}</Text>
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                {LEAD_ROLES.includes(formData.role) ? 'Select products this user can see. No selection means no Justdial enquiries.' : 'Product assignments require a Sales Manager or Sales Executive role to access Leads.'}
+                {formData.role === 'sales_executive' ? 'Select products this user can see from every source. They see only their assigned leads. No selection means no leads.' : formData.role === 'sales_manager' ? 'Select which Justdial products this manager can see. Other lead sources remain visible.' : 'Product assignments require a Sales Manager or Sales Executive role to access Leads.'}
               </Text>
               <View style={styles.choiceRow}>
                 {productOptions.map(product => {

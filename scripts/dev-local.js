@@ -111,7 +111,7 @@ async function main() {
     console.log(`Frontend is already running on port ${clientPort}.`);
   } else {
     start(path.join(clientDir, 'node_modules', 'vite', 'bin', 'vite.js'),
-      ['--host', 'localhost', '--port', String(clientPort), '--strictPort'], clientDir,
+      ['--host', '0.0.0.0', '--port', String(clientPort), '--strictPort'], clientDir,
       { ...process.env, VITE_API_PROXY_TARGET: apiUrl });
   }
   console.log(`Open http://localhost:${clientPort}/login`);

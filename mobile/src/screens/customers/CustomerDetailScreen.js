@@ -24,6 +24,7 @@ import {
   Mail,
   MapPin,
   Calendar,
+  User,
   Trash2,
   CheckCircle2,
   ShieldCheck
@@ -217,6 +218,14 @@ export default function CustomerDetailScreen({ route, navigation }) {
                 <View style={styles.detailTextContainer}>
                   <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Phone</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{customer.phone || 'N/A'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailRow}>
+                <User size={16} color={colors.textMuted} />
+                <View style={styles.detailTextContainer}>
+                  <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Assigned Executive</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>{customer.assignedTo || 'Unassigned'}</Text>
                 </View>
               </View>
 

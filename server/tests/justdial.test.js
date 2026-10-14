@@ -84,7 +84,7 @@ test('Justdial callback accepts JSON, form and GET; repeated lead IDs acknowledg
   assert.deepEqual(delivered, ['JD1', 'JD2']);
 });
 
-test('Justdial notifications go to admins and users assigned the matching product', async (t) => {
+test('unassigned Justdial leads notify admins but no sales executive', async (t) => {
   let receiveNotifications;
   const notifications = new Promise(resolve => { receiveNotifications = resolve; });
   const prisma = {
@@ -110,7 +110,7 @@ test('Justdial notifications go to admins and users assigned the matching produc
   });
   assert.equal(await response.text(), 'RECEIVED');
   const sent = await notifications;
-  assert.deepEqual(sent.map(item => item.userId), [1, 2, 3]);
+  assert.deepEqual(sent.map(item => item.userId), [1, 2]);
   assert.ok(sent.every(item => item.dedupeKey === `justdial:42:${item.userId}`));
 });
 

@@ -20,7 +20,7 @@ const categoryRules = [
   [JUSTDIAL_PRODUCTS.SMS, /\b(sms|text messag(?:e|ing))\b/i],
   [JUSTDIAL_PRODUCTS.WABA, /\b(whatsapp|waba)\b/i],
   [JUSTDIAL_PRODUCTS.RCS, /\brcs\b/i],
-  [JUSTDIAL_PRODUCTS.VOICE, /\b(voice call|voice sms|ivr|automated call)\b/i],
+  [JUSTDIAL_PRODUCTS.VOICE, /\b(voice call|voice sms|voice package|ivr|automated call)\b/i],
   [JUSTDIAL_PRODUCTS.WEBSITE, /\b(website|web design|web develop(?:ment|er|ers)?)\b/i],
   [JUSTDIAL_PRODUCTS.SOFTWARE, /\b(software|app develop(?:ment|er|ers)?|application develop(?:ment|er|ers)?)\b/i],
   [JUSTDIAL_PRODUCTS.DIGITAL_MARKETING, /\b(digital marketing|seo|search engine optimization)\b/i]
@@ -50,15 +50,28 @@ function userProducts(user) {
 
 function leadAccessWhere(user) {
   if (ADMIN_ROLES.has(user.role)) return {};
-  return { OR: [
+  const productAccess = { OR: [
     { source: null },
     { source: { not: 'Justdial' } },
     { source: 'Justdial', justdialProduct: { in: userProducts(user) } }
   ] };
+  if (user.role !== 'sales_executive') return productAccess;
+  const name = String(user.name || '').trim();
+  if (!name) return { id: -1 };
+  return { AND: [
+    { exec: { equals: name, mode: 'insensitive' } },
+    { justdialProduct: { in: userProducts(user) } }
+  ] };
 }
 
 function canAccessLead(user, lead) {
-  return ADMIN_ROLES.has(user.role) || lead.source !== 'Justdial' || userProducts(user).includes(lead.justdialProduct);
+  if (ADMIN_ROLES.has(user.role)) return true;
+  if (user.role === 'sales_executive') {
+    const name = String(user.name || '').trim().toLocaleLowerCase();
+    if (!name || String(lead.exec || '').trim().toLocaleLowerCase() !== name) return false;
+    return userProducts(user).includes(lead.justdialProduct);
+  }
+  return lead.source !== 'Justdial' || userProducts(user).includes(lead.justdialProduct);
 }
 
 module.exports = {

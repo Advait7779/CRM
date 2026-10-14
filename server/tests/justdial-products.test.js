@@ -15,16 +15,24 @@ test('Justdial categories map only when one product is clear', () => {
   assert.equal(classifyJustdialCategory('Generator Dealer'), JUSTDIAL_PRODUCTS.UNCLASSIFIED);
 });
 
-test('Justdial product assignments limit leads while other sources remain visible', () => {
-  const cctv = { role: 'sales_executive', justdialProducts: ['CCTV'] };
-  const gps = { role: 'sales_executive', justdialProducts: ['GPS & Fuel Sensor'] };
-  assert.equal(canAccessLead(cctv, { source: 'Justdial', justdialProduct: 'CCTV' }), true);
-  assert.equal(canAccessLead(cctv, { source: 'Justdial', justdialProduct: 'GPS & Fuel Sensor' }), false);
-  assert.equal(canAccessLead(gps, { source: 'Justdial', justdialProduct: 'GPS & Fuel Sensor' }), true);
-  assert.equal(canAccessLead(gps, { source: 'Justdial', justdialProduct: 'Unclassified' }), false);
-  assert.equal(canAccessLead(gps, { source: 'WhatsApp', justdialProduct: null }), true);
+test('sales executives see only their assigned leads in permitted products from every source', () => {
+  const cctv = { name: 'Shubhangi', role: 'sales_executive', justdialProducts: ['CCTV'] };
+  const gps = { name: 'GPS Executive', role: 'sales_executive', justdialProducts: ['GPS & Fuel Sensor'] };
+  assert.equal(canAccessLead(cctv, { exec: 'shubhangi', source: 'Justdial', justdialProduct: 'CCTV' }), true);
+  assert.equal(canAccessLead(cctv, { exec: 'Shubhangi', source: 'Justdial', justdialProduct: 'GPS & Fuel Sensor' }), false);
+  assert.equal(canAccessLead(cctv, { exec: null, source: 'Justdial', justdialProduct: 'CCTV' }), false);
+  assert.equal(canAccessLead(cctv, { exec: 'Sanika', source: 'Justdial', justdialProduct: 'CCTV' }), false);
+  assert.equal(canAccessLead(gps, { exec: 'GPS Executive', source: 'Justdial', justdialProduct: 'GPS & Fuel Sensor' }), true);
+  assert.equal(canAccessLead(gps, { exec: 'GPS Executive', source: 'Justdial', justdialProduct: 'Unclassified' }), false);
+  assert.equal(canAccessLead(gps, { exec: 'GPS Executive', source: 'WhatsApp', justdialProduct: 'GPS & Fuel Sensor' }), true);
+  assert.equal(canAccessLead(gps, { exec: 'GPS Executive', source: 'WhatsApp', justdialProduct: 'CCTV' }), false);
+  assert.equal(canAccessLead(gps, { exec: 'GPS Executive', source: 'WhatsApp', justdialProduct: null }), false);
+  assert.equal(canAccessLead(gps, { exec: 'Rahul', source: 'WhatsApp', justdialProduct: 'GPS & Fuel Sensor' }), false);
   assert.equal(canAccessLead({ role: 'director' }, { source: 'Justdial', justdialProduct: 'Unclassified' }), true);
-  assert.deepEqual(leadAccessWhere(cctv).OR[2], { source: 'Justdial', justdialProduct: { in: ['CCTV'] } });
+  assert.deepEqual(leadAccessWhere(cctv).AND[0], { exec: { equals: 'Shubhangi', mode: 'insensitive' } });
+  assert.deepEqual(leadAccessWhere(cctv).AND[1], { justdialProduct: { in: ['CCTV'] } });
+  assert.deepEqual(leadAccessWhere({ role: 'sales_executive', justdialProducts: ['CCTV'] }), { id: -1 });
+  assert.deepEqual(leadAccessWhere({ role: 'sales_manager', justdialProducts: ['CCTV'] }).OR[2], { source: 'Justdial', justdialProduct: { in: ['CCTV'] } });
   assert.deepEqual(leadAccessWhere({ role: 'super_admin' }), {});
   assert.equal(validProductSelection(['CCTV', 'GPS & Fuel Sensor']), true);
   assert.equal(validProductSelection(['CCTV', 'CCTV']), false);

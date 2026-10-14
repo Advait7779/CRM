@@ -51,8 +51,8 @@ const EMPTY_FORM = {
 
 
 
-function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, systemUsers = [] }) {
-  const [form, setForm] = useState(lead ? { ...lead } : { ...EMPTY_FORM })
+function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, systemUsers = [], currentUser }) {
+  const [form, setForm] = useState(lead ? { ...lead } : { ...EMPTY_FORM, exec: currentUser?.role === 'sales_executive' ? currentUser.name : '' })
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -94,14 +94,14 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, syst
             </div>
             <div className="form-group">
               <label className="form-label">Service Interest</label>
-              <ThemeSelect className="input-field" value={form.service} disabled={lead?.source === 'Justdial' && !isAdmin} onChange={e => setForm(f => ({ ...f, service: e.target.value }))}>
+              <ThemeSelect className="input-field" value={form.service} disabled={lead?.source === 'Justdial' && !isAdmin} onChange={e => setForm(f => ({ ...f, service: e.target.value, justdialProduct: undefined }))}>
                 {form.service && !SERVICES.includes(form.service) && <option value={form.service}>{form.service}</option>}
                 {SERVICES.map(s => <option key={s}>{s}</option>)}
               </ThemeSelect>
             </div>
-            {lead?.source === 'Justdial' && isAdmin && (
+            {lead && isAdmin && (
               <div className="form-group">
-                <label className="form-label">Justdial Product Group</label>
+                <label className="form-label">Lead Product Group</label>
                 <ThemeSelect className="input-field" value={form.justdialProduct || 'Unclassified'} onChange={e => setForm(f => ({ ...f, justdialProduct: e.target.value }))}>
                   <option value="Unclassified">Unclassified (admin review)</option>
                   {productOptions.map(product => <option key={product} value={product}>{product}</option>)}
@@ -121,7 +121,7 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, syst
             </div>
             <div className="form-group">
               <label className="form-label">Assigned Executive</label>
-              <ThemeSelect className="input-field" value={form.exec || ''} onChange={e => setForm(f => ({ ...f, exec: e.target.value }))}>
+              <ThemeSelect className="input-field" value={form.exec || ''} disabled={currentUser?.role === 'sales_executive'} onChange={e => setForm(f => ({ ...f, exec: e.target.value }))}>
                 <option value="">Select Executive</option>
                 {form.exec && !systemUsers.some(u => u.name === form.exec) && (
                   <option value={form.exec}>{form.exec}</option>
@@ -310,7 +310,7 @@ export default function LeadsPage() {
                     </div>
                   </td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{l.phone}</td>
-                  <td><span style={{ fontSize: 12, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '3px 8px', borderRadius: 6 }}>{l.service}</span>{l.source === 'Justdial' && <div style={{ fontSize: 11, color: l.justdialProduct === 'Unclassified' ? '#b45309' : 'var(--text-secondary)', marginTop: 6 }}>{l.justdialProduct || 'Unclassified'}</div>}</td>
+                  <td><span style={{ fontSize: 12, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '3px 8px', borderRadius: 6 }}>{l.service}</span>{l.justdialProduct && <div style={{ fontSize: 11, color: l.justdialProduct === 'Unclassified' ? '#b45309' : 'var(--text-secondary)', marginTop: 6 }}>{l.justdialProduct}</div>}</td>
                   <td>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: SOURCE_COLOR[l.source] }}>
                       <SrcIcon size={12} /> {l.source}
@@ -393,6 +393,7 @@ export default function LeadsPage() {
           isAdmin={isAdmin}
           productOptions={productOptions}
           systemUsers={systemUsers}
+          currentUser={user}
           lead={modal.lead}
           isNew={modal.isNew}
           onClose={() => setModal(null)}

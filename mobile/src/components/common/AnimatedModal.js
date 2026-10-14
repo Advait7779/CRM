@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { BlurView } from 'expo-blur';
+import { ModalBlurContext } from '../../context/ModalBlurContext';
 import {
   Modal,
   StyleSheet,
@@ -31,6 +33,7 @@ export default function AnimatedModal({
   statusBarTranslucent = true,
 }) {
   const [rendered, setRendered] = useState(Boolean(visible));
+  const blurTargetRef = useContext(ModalBlurContext);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -182,18 +185,24 @@ export default function AnimatedModal({
       ]}
       pointerEvents={visible ? 'auto' : 'none'}
     >
-      {/* Smooth backdrop fade */}
+      {/* Blur only while a popup dialog is visible; keep the form itself sharp. */}
       <Animated.View
         style={[
           styles.backdrop,
           {
-            opacity: fadeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 0.65],
-            }),
+            opacity: fadeAnim,
           },
         ]}
       >
+        <BlurView
+          style={StyleSheet.absoluteFillObject}
+          blurTarget={blurTargetRef}
+          blurMethod="dimezisBlurView"
+          intensity={90}
+          blurReductionFactor={2}
+          tint="light"
+        />
+        <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(15, 23, 42, 0.42)' }]} />
         {closeOnBackdropPress && (
           <TouchableOpacity
             style={StyleSheet.absoluteFillObject}
@@ -264,7 +273,6 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
   },
   animatedCard: {
     borderRadius: 20,

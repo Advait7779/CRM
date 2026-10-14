@@ -35,31 +35,47 @@ export function AuthProvider({ children }) {
     fetch(`${BASE}/auth/profile`, { headers, credentials: 'include' })
       .then(async response => {
         if (response.ok) {
-          setUser(await response.json())
-        } else {
+          const profile = await response.json()
+          setUser(profile)
+        } else if (response.status === 401 || response.status === 403) {
           localStorage.removeItem('token')
           setUser(null)
         }
       })
-      .catch(() => setUser(null))
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
   const login = async (email, password) => {
-    const res = await fetch(`${BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password })
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      throw new Error(data.message || 'Invalid credentials')
+    let res
+    try {
+      res = await fetch(`${BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      })
+    } catch {
+      throw new Error('Unable to connect to backend server. Please make sure the backend is running on port 5001.')
     }
-    if (data.token) {
+
+    let data
+    try {
+      data = await res.json()
+    } catch {
+      data = null
+    }
+
+    if (!res.ok) {
+      if (res.status === 502) {
+        throw new Error(data?.message || 'Backend server is not reachable on port 5001. Please make sure the backend server is running.')
+      }
+      throw new Error(data?.message || 'Invalid credentials')
+    }
+    if (data?.token) {
       localStorage.setItem('token', data.token)
     }
-    setUser(data.user)
+    setUser(data?.user)
     return { success: true }
   }
 

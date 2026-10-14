@@ -141,7 +141,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = Number(process.env.PORT || 5001);
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || (isProduction ? '0.0.0.0' : undefined);
 let stopScheduler = () => {};
 
 async function startServer() {
@@ -157,8 +157,9 @@ async function startServer() {
   stopScheduler = startScheduler();
 
   return new Promise((resolve) => {
-    server.listen(PORT, HOST, () => {
-      console.log(`Server running on ${HOST}:${PORT} [${process.env.NODE_ENV || 'development'}]`);
+    const listenArgs = HOST ? [PORT, HOST] : [PORT];
+    server.listen(...listenArgs, () => {
+      console.log(`Server running on ${HOST || 'dual-stack (IPv4+IPv6)'}:${PORT} [${process.env.NODE_ENV || 'development'}]`);
       resolve(server);
     });
   });
