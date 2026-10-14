@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { prepareData } = require('../utils/prismaData');
-const { classifyJustdialCategory, canAccessLead } = require('../services/justdialProducts');
+const { classifyJustdialCategory, assignedExecutiveForJustdial, canAccessLead } = require('../services/justdialProducts');
 const { sendJustdialWebhookNotifications } = require('../services/savedWebhookNotifications');
 
 // Field names and limits come from Justdial's API integration document.
@@ -93,9 +93,20 @@ function createJustdialRouter(prisma, getToken = () => process.env.JUSTDIAL_WEBH
     try {
       const payload = normalizeJustdialPayload(req.method === 'GET' ? req.query : req.body);
       const data = toLeadData(payload);
+      let users = [];
+      try {
+        users = await prisma.users.findMany({
+          where: { role: { in: ['super_admin', 'director', 'sales_manager', 'sales_executive'] } },
+          select: { id: true, name: true, role: true, justdialProducts: true }
+        });
+      } catch (error) {
+        console.error('Justdial lead assignment lookup failed:', error.message);
+      }
+      const assignee = assignedExecutiveForJustdial(data.justdialProduct, users);
+      if (assignee) data.exec = assignee.name;
       let lead;
       try {
-        lead = await prisma.leads.create({ data, select: { id: true, name: true, service: true, source: true, justdialProduct: true } });
+        lead = await prisma.leads.create({ data, select: { id: true, name: true, service: true, source: true, justdialProduct: true, exec: true } });
       } catch (error) {
         if (error.code !== 'P2002') throw error;
         const existing = await prisma.leads.findUnique({
@@ -109,10 +120,6 @@ function createJustdialRouter(prisma, getToken = () => process.env.JUSTDIAL_WEBH
       setImmediate(() => sendCustomerNotifications(prisma, lead, payload)
         .catch(error => console.error('Justdial customer notification failed:', error.message)));
       try {
-        const users = await prisma.users.findMany({
-          where: { role: { in: ['super_admin', 'director', 'sales_manager', 'sales_executive'] } },
-          select: { id: true, role: true, justdialProducts: true }
-        });
         const recipients = users.filter(user => canAccessLead(user, lead));
         if (recipients.length) {
           await prisma.notifications.createMany({

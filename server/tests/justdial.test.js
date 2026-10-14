@@ -114,6 +114,45 @@ test('unassigned Justdial leads notify admins but no sales executive', async (t)
   assert.ok(sent.every(item => item.dedupeKey === `justdial:42:${item.userId}`));
 });
 
+test('Justdial callback assigns CCTV to Shubhangi and digital leads to Sanika', async t => {
+  const saved = new Map();
+  const users = [
+    { id: 1, name: 'Admin', role: 'super_admin', justdialProducts: [] },
+    { id: 2, name: 'Shubhangi', role: 'sales_executive', justdialProducts: ['CCTV'] },
+    { id: 3, name: 'Sanika', role: 'sales_executive', justdialProducts: ['CCTV', 'SMS', 'Website Development'] },
+    { id: 4, name: 'Sahil', role: 'sales_executive', justdialProducts: ['GPS & Fuel Sensor'] }
+  ];
+  const prisma = {
+    leads: { async create({ data }) {
+      const lead = { id: saved.size + 1, ...data };
+      saved.set(data.justdialLeadId, lead);
+      return lead;
+    } },
+    users: { async findMany() { return users; } },
+    notifications: { async createMany() { return {}; } }
+  };
+  const app = express();
+  app.use(express.json());
+  app.use('/api/integrations/justdial', createJustdialRouter(prisma, () => token, async () => {}));
+  const server = app.listen(0, '127.0.0.1');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await new Promise(resolve => server.once('listening', resolve));
+  for (const [leadid, category] of [
+    ['camera', 'CCTV Installation'], ['sms', 'Bulk SMS Services'],
+    ['website', 'Website Development'], ['gps', 'GPS Tracking']
+  ]) {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/integrations/justdial/${token}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadid, category, mobile: '9000000000' })
+    });
+    assert.equal(response.status, 200);
+  }
+  assert.equal(saved.get('camera').exec, 'Shubhangi');
+  assert.equal(saved.get('sms').exec, 'Sanika');
+  assert.equal(saved.get('website').exec, 'Sanika');
+  assert.equal(saved.get('gps').exec, undefined);
+});
+
 test('Justdial callback reaches all four locally mocked channels for each product group once', async t => {
   const saved = new Map();
   const requests = [];

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   JUSTDIAL_PRODUCTS, classifyJustdialCategory, validProductSelection,
-  leadAccessWhere, canAccessLead
+  assignedExecutiveForJustdial, leadAccessWhere, canAccessLead
 } = require('../services/justdialProducts');
 
 test('Justdial categories map only when one product is clear', () => {
@@ -13,6 +13,21 @@ test('Justdial categories map only when one product is clear', () => {
   assert.equal(classifyJustdialCategory('WhatsApp WABA API'), JUSTDIAL_PRODUCTS.WABA);
   assert.equal(classifyJustdialCategory('SMS and RCS'), JUSTDIAL_PRODUCTS.UNCLASSIFIED);
   assert.equal(classifyJustdialCategory('Generator Dealer'), JUSTDIAL_PRODUCTS.UNCLASSIFIED);
+});
+
+test('Justdial routing names one permitted executive per product', () => {
+  const staff = [
+    { id: 1, name: 'Shubhangi', role: 'sales_executive', justdialProducts: ['CCTV'] },
+    { id: 2, name: 'Sanika', role: 'sales_executive', justdialProducts: ['CCTV', 'SMS', 'Website Development'] },
+    { id: 3, name: 'Sahil', role: 'sales_executive', justdialProducts: ['GPS & Fuel Sensor'] }
+  ];
+  assert.equal(assignedExecutiveForJustdial('CCTV', staff)?.name, 'Shubhangi');
+  assert.equal(assignedExecutiveForJustdial('SMS', staff)?.name, 'Sanika');
+  assert.equal(assignedExecutiveForJustdial('Website Development', staff)?.name, 'Sanika');
+  assert.equal(assignedExecutiveForJustdial('GPS & Fuel Sensor', staff), null);
+  assert.equal(assignedExecutiveForJustdial('Unclassified', staff), null);
+  assert.equal(assignedExecutiveForJustdial('RCS', staff), null);
+  assert.equal(assignedExecutiveForJustdial('CCTV', [...staff, { ...staff[0], id: 4 }]), null);
 });
 
 test('sales executives see only their assigned leads in permitted products from every source', () => {

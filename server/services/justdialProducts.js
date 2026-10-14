@@ -13,6 +13,11 @@ const JUSTDIAL_PRODUCTS = Object.freeze({
 
 const ASSIGNABLE_PRODUCTS = Object.values(JUSTDIAL_PRODUCTS).filter(value => value !== JUSTDIAL_PRODUCTS.UNCLASSIFIED);
 const ADMIN_ROLES = new Set(['super_admin', 'director']);
+const DIGITAL_PRODUCTS = new Set([
+  JUSTDIAL_PRODUCTS.SMS, JUSTDIAL_PRODUCTS.WABA, JUSTDIAL_PRODUCTS.RCS,
+  JUSTDIAL_PRODUCTS.VOICE, JUSTDIAL_PRODUCTS.WEBSITE,
+  JUSTDIAL_PRODUCTS.SOFTWARE, JUSTDIAL_PRODUCTS.DIGITAL_MARKETING
+]);
 
 const categoryRules = [
   [JUSTDIAL_PRODUCTS.CCTV, /\b(cctv|closed circuit|surveillance camera|security camera|ip camera)\b/i],
@@ -48,6 +53,17 @@ function userProducts(user) {
   return Array.isArray(user?.justdialProducts) ? user.justdialProducts.filter(value => ASSIGNABLE_PRODUCTS.includes(value)) : [];
 }
 
+function assignedExecutiveForJustdial(product, users) {
+  const assigneeName = product === JUSTDIAL_PRODUCTS.CCTV
+    ? 'Shubhangi'
+    : DIGITAL_PRODUCTS.has(product) ? 'Sanika' : null;
+  if (!assigneeName) return null;
+  const eligible = users.filter(user => user.role === 'sales_executive'
+    && String(user.name || '').trim().toLocaleLowerCase() === assigneeName.toLocaleLowerCase()
+    && userProducts(user).includes(product));
+  return eligible.length === 1 ? eligible[0] : null;
+}
+
 function leadAccessWhere(user) {
   if (ADMIN_ROLES.has(user.role)) return {};
   const productAccess = { OR: [
@@ -76,5 +92,5 @@ function canAccessLead(user, lead) {
 
 module.exports = {
   JUSTDIAL_PRODUCTS, ASSIGNABLE_PRODUCTS, ADMIN_ROLES, classifyJustdialCategory, notificationGroupForProduct,
-  validProductSelection, userProducts, leadAccessWhere, canAccessLead
+  validProductSelection, userProducts, assignedExecutiveForJustdial, leadAccessWhere, canAccessLead
 };
