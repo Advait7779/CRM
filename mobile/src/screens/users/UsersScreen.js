@@ -216,7 +216,7 @@ export default function UsersScreen() {
               </View>
 
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                {item.role === 'sales_manager' ? 'Justdial products' : 'Lead products'}: {['super_admin', 'director'].includes(item.role) ? 'All products' : item.justdialProducts?.length ? item.justdialProducts.join(', ') : 'No products assigned'}
+                Lead products: {['super_admin', 'director'].includes(item.role) ? 'All products' : item.justdialProducts?.length ? item.justdialProducts.join(', ') : 'No products assigned'}
               </Text>
               {item.phone ? (
                 <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
@@ -310,9 +310,9 @@ export default function UsersScreen() {
                 ))}
               </View>
 
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{formData.role === 'sales_manager' ? 'Justdial products' : 'Lead products'}</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Lead products</Text>
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                {formData.role === 'sales_executive' ? 'Select products this user can see from every source. They see only their assigned leads. No selection means no leads.' : formData.role === 'sales_manager' ? 'Select which Justdial products this manager can see. Other lead sources remain visible.' : 'Product assignments require a Sales Manager or Sales Executive role to access Leads.'}
+                {formData.role === 'sales_executive' || formData.role === 'sales_manager' ? 'Select products this user can see from every source, regardless of the lead executive. No selection means no leads.' : 'Product assignments require a Sales Manager or Sales Executive role to access Leads.'}
               </Text>
               <View style={styles.choiceRow}>
                 {productOptions.map(product => {

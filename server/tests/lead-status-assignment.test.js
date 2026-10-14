@@ -15,8 +15,8 @@ const users = [
   { id: 3, name: 'Ravi', role: 'sales_executive', tokenVersion: 0, justdialProducts: ['CCTV'] }
 ];
 const leads = new Map([
-  [11, { id: 11, name: 'New prospect', phone: '9000000011', source: 'Website', service: 'CCTV', status: 'New' }],
-  [12, { id: 12, name: 'Existing customer', phone: '9000000012', source: 'Website', service: 'GPS Tracking', status: 'Converted', convertedCustomerId: 7 }]
+  [11, { id: 11, name: 'New prospect', phone: '9000000011', source: 'Website', service: 'CCTV', justdialProduct: 'CCTV', status: 'New' }],
+  [12, { id: 12, name: 'Existing customer', phone: '9000000012', source: 'Website', service: 'GPS Tracking', justdialProduct: 'GPS & Fuel Sensor', status: 'Converted', convertedCustomerId: 7 }]
 ]);
 const customers = new Map();
 const prisma = {
@@ -96,13 +96,11 @@ test('lead statuses persist, converted leads stay converted, and customer assign
     assert.equal(saved.data.exec, 'Maya');
     assert.equal((await request('/leads/11')).data.status, status);
   }
-  assert.equal((await request('/leads/11', { userId: 3 })).status, 404);
-  assert.equal((await request('/leads/11', { method: 'PUT', body: { exec: 'Ravi' } })).status, 200);
   assert.equal((await request('/leads/11', { userId: 3 })).status, 200);
   const ownUpdate = await request('/leads/11', { userId: 3, method: 'PUT', body: { status: 'Interested', exec: 'Maya' } });
   assert.equal(ownUpdate.status, 200);
   assert.equal(ownUpdate.data.status, 'Interested');
-  assert.equal(ownUpdate.data.exec, 'Ravi');
+  assert.equal(ownUpdate.data.exec, 'Maya');
   assert.equal((await request('/leads/12', { userId: 3 })).status, 404);
   assert.equal((await request('/leads/12', { method: 'PUT', body: { status: 'Connected' } })).status, 409);
   assert.equal(leads.get(12).status, 'Converted');

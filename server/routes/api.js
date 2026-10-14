@@ -674,7 +674,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     if (routeName === 'leads') {
       if (req.user.role === 'sales_executive') payload.exec = req.user.name;
       payload.justdialProduct = classifyJustdialCategory(payload.service);
-      if (!canAccessLead(req.user, payload)) return res.status(403).json({ message: 'This lead is not assigned to you or its product is not permitted.' });
+      if (!canAccessLead(req.user, payload)) return res.status(403).json({ message: 'This lead product is not permitted for your account.' });
     }
     if (!payload.id && (routeName === 'quotations' || routeName === 'invoices')) {
       const prefix = routeName === 'quotations' ? 'QT' : 'INV';
@@ -854,7 +854,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
         }
       }
       if (!canAccessLead(req.user, { ...record, ...payload, source: record.source === 'Justdial' && !ADMIN.includes(req.user.role) ? 'Justdial' : nextSource })) {
-        return res.status(403).json({ message: 'This lead is not assigned to you or its product is not permitted.' });
+        return res.status(403).json({ message: 'This lead product is not permitted for your account.' });
       }
     }
     await applyStableReferences(payload, config.model);

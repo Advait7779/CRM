@@ -13,7 +13,8 @@ const users = [
   { id: 1, name: 'Admin', role: 'super_admin', email: 'admin@example.test', tokenVersion: 0, justdialProducts: [] },
   { id: 2, name: 'Shubhangi', role: 'sales_executive', email: 'cctv@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] },
   { id: 3, name: 'GPS Executive', role: 'sales_executive', email: 'gps@example.test', tokenVersion: 0, justdialProducts: ['GPS & Fuel Sensor'] },
-  { id: 4, name: 'CCTV too', role: 'sales_manager', email: 'cctv2@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] }
+  { id: 4, name: 'CCTV too', role: 'sales_manager', email: 'cctv2@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] },
+  { id: 5, name: 'Sanika', role: 'sales_executive', email: 'sanika@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] }
 ];
 const leads = [
   { id: 11, name: 'Camera enquiry', phone: '9000000011', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', exec: 'Shubhangi', createdAt: new Date() },
@@ -61,7 +62,7 @@ const prisma = {
 require.cache[require.resolve('../config/prisma')].exports = { ...config, prisma };
 const apiRouter = require('../routes/api');
 
-test('Leads API scopes assignments and products across sources while Settings keeps all 17 URL fields', async t => {
+test('Leads API scopes products across sources regardless of executive while Settings keeps all 17 URL fields', async t => {
   const app = express();
   app.use(express.json());
   app.use('/api', apiRouter);
@@ -82,7 +83,7 @@ test('Leads API scopes assignments and products across sources while Settings ke
     return { status: response.status, data: await response.json() };
   };
 
-  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14, 15, 16, 17, 18]], [2, [11, 17]], [3, [12]], [4, [11, 14, 15, 16, 17, 18]]]) {
+  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14, 15, 16, 17, 18]], [2, [11, 15, 16, 17]], [3, [12, 18]], [4, [11, 15, 16, 17]], [5, [11, 15, 16, 17]]]) {
     const result = await request(userId, '/leads');
     assert.equal(result.status, 200);
     assert.deepEqual(result.data.map(lead => lead.id), expectedIds);
@@ -90,8 +91,10 @@ test('Leads API scopes assignments and products across sources while Settings ke
   assert.equal((await request(2, '/leads/12')).status, 404);
   assert.equal((await request(2, '/leads/12', 'PUT', { status: 'Contacted' })).status, 404);
   assert.equal((await request(2, '/leads/11')).status, 200);
-  assert.equal((await request(2, '/leads/15')).status, 404);
-  assert.equal((await request(2, '/leads/16')).status, 404);
+  assert.equal((await request(2, '/leads/15')).status, 200);
+  assert.equal((await request(2, '/leads/16')).status, 200);
+  assert.equal((await request(5, '/leads/11')).status, 200);
+  assert.equal((await request(5, '/leads/12')).status, 404);
   assert.equal((await request(2, '/leads/14')).status, 404);
   assert.equal((await request(2, '/leads/18')).status, 404);
   assert.equal((await request(2, '/leads/18', 'PUT', { status: 'Contacted' })).status, 404);
@@ -106,8 +109,10 @@ test('Leads API scopes assignments and products across sources while Settings ke
   assert.match(exportResponse.headers.get('content-type'), /spreadsheetml/);
   const exported = await new ExcelJS.Workbook().xlsx.load(Buffer.from(await exportResponse.arrayBuffer()));
   assert.equal(exported.getWorksheet('Leads').getCell('B6').value, 'Camera enquiry');
-  assert.equal(exported.getWorksheet('Leads').getCell('B7').value, 'Assigned referral');
-  assert.equal(exported.getWorksheet('Leads').getCell('B8').value, null);
+  assert.equal(exported.getWorksheet('Leads').getCell('B7').value, 'Unassigned CCTV enquiry');
+  assert.equal(exported.getWorksheet('Leads').getCell('B8').value, 'Other CCTV enquiry');
+  assert.equal(exported.getWorksheet('Leads').getCell('B9').value, 'Assigned referral');
+  assert.equal(exported.getWorksheet('Leads').getCell('B10').value, null);
   assert.equal((await request(2, '/leads-export.xlsx?group=invalid')).status, 400);
 
   const initial = await request(1, '/settings');

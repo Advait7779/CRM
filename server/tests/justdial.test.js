@@ -84,7 +84,7 @@ test('Justdial callback accepts JSON, form and GET; repeated lead IDs acknowledg
   assert.deepEqual(delivered, ['JD1', 'JD2']);
 });
 
-test('unassigned Justdial leads notify admins but no sales executive', async (t) => {
+test('new Justdial leads notify admins and every sales user permitted for that product', async (t) => {
   let receiveNotifications;
   const notifications = new Promise(resolve => { receiveNotifications = resolve; });
   const prisma = {
@@ -110,11 +110,11 @@ test('unassigned Justdial leads notify admins but no sales executive', async (t)
   });
   assert.equal(await response.text(), 'RECEIVED');
   const sent = await notifications;
-  assert.deepEqual(sent.map(item => item.userId), [1, 2]);
+  assert.deepEqual(sent.map(item => item.userId), [1, 2, 3]);
   assert.ok(sent.every(item => item.dedupeKey === `justdial:42:${item.userId}`));
 });
 
-test('Justdial callback assigns CCTV to Shubhangi and digital leads to Sanika', async t => {
+test('Justdial callback leaves executive unset so account product access controls visibility', async t => {
   const saved = new Map();
   const users = [
     { id: 1, name: 'Admin', role: 'super_admin', justdialProducts: [] },
@@ -147,9 +147,9 @@ test('Justdial callback assigns CCTV to Shubhangi and digital leads to Sanika', 
     });
     assert.equal(response.status, 200);
   }
-  assert.equal(saved.get('camera').exec, 'Shubhangi');
-  assert.equal(saved.get('sms').exec, 'Sanika');
-  assert.equal(saved.get('website').exec, 'Sanika');
+  assert.equal(saved.get('camera').exec, undefined);
+  assert.equal(saved.get('sms').exec, undefined);
+  assert.equal(saved.get('website').exec, undefined);
   assert.equal(saved.get('gps').exec, undefined);
 });
 

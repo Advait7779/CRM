@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { prepareData } = require('../utils/prismaData');
-const { classifyJustdialCategory, assignedExecutiveForJustdial, canAccessLead } = require('../services/justdialProducts');
+const { classifyJustdialCategory, canAccessLead } = require('../services/justdialProducts');
 const { sendJustdialWebhookNotifications } = require('../services/savedWebhookNotifications');
 
 // Field names and limits come from Justdial's API integration document.
@@ -100,10 +100,8 @@ function createJustdialRouter(prisma, getToken = () => process.env.JUSTDIAL_WEBH
           select: { id: true, name: true, role: true, justdialProducts: true }
         });
       } catch (error) {
-        console.error('Justdial lead assignment lookup failed:', error.message);
+        console.error('Justdial notification recipient lookup failed:', error.message);
       }
-      const assignee = assignedExecutiveForJustdial(data.justdialProduct, users);
-      if (assignee) data.exec = assignee.name;
       let lead;
       try {
         lead = await prisma.leads.create({ data, select: { id: true, name: true, service: true, source: true, justdialProduct: true, exec: true } });

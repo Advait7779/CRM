@@ -576,7 +576,7 @@ export default function LeadsScreen() {
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Assigned Executive</Text>
             {user?.role === 'sales_executive' ? (
-              <Text style={[styles.detailText, { color: colors.text }]}>Assigned to you: {user.name}</Text>
+              <Text style={[styles.detailText, { color: colors.text }]}>{editingId ? `Current executive: ${formData.exec || 'Unassigned'}` : `Assigned to you: ${user.name}`}</Text>
             ) : <View style={styles.choiceRow}>
               {[{ id: 'unassigned', name: '', label: 'Unassigned' },
                 ...(formData.exec && !systemUsers.some(person => person.name === formData.exec) ? [{ id: 'current', name: formData.exec }] : []),

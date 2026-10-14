@@ -20,9 +20,9 @@ function ProductAccessPicker({ role, selected, options, onChange }) {
   const description = hasFullAccess
     ? 'This role already sees every lead. Product selections do not limit its access.'
     : role === 'sales_executive'
-      ? 'Select the products this user can see from every source. They see only leads assigned to their name. No selection means no leads.'
+      ? 'Select the products this user can see from every source, regardless of the lead executive. No selection means no leads.'
       : role === 'sales_manager'
-        ? 'Select which Justdial products this manager can see. Other lead sources remain visible.'
+        ? 'Select the products this manager can see from every source. No selection means no leads.'
       : 'You can save product selections for this role. To see or update those enquiries in Leads, change the role to Sales Manager or Sales Executive.'
   return (
     <div className="form-group" style={{ marginTop: 16 }}>
@@ -175,7 +175,7 @@ export default function UsersPage() {
                       </ThemeSelect>
                     )}
                     <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 5 }}>
-                      {isSuperAdmin || user.role === 'director' ? 'Lead products: All' : `${user.role === 'sales_manager' ? 'Justdial products' : 'Lead products'}: ${user.justdialProducts?.join(', ') || 'None assigned'}${LEAD_ROLES.includes(user.role) ? '' : ' (requires a sales role for Leads access)'}`}
+                      {isSuperAdmin || user.role === 'director' ? 'Lead products: All' : `Lead products: ${user.justdialProducts?.join(', ') || 'None assigned'}${LEAD_ROLES.includes(user.role) ? '' : ' (requires a sales role for Leads access)'}`}
                     </div>
                   </td>
                   <td>{new Date(user.createdAt).toLocaleDateString('en-IN')}</td>
