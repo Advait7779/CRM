@@ -4,7 +4,7 @@ import { apiDownload, apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api
 import { useAuth } from '../../context/AuthContext'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
-import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, UserCheck, Download } from 'lucide-react'
+import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, UserCheck, Download, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { LEAD_GROUPS, leadMatchesGroup, getLeadDate } from './leadData'
 import { localDateString } from '../../utils/date'
@@ -325,10 +325,21 @@ export default function LeadsPage() {
                       {l.status}
                     </span>
                   </td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{l.exec}</td>
+                  <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{l.exec || '—'}</td>
                   <td style={{ color: l.followUp ? '#f59e0b' : '#475569', fontSize: 13 }}>{l.followUp || '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => setModal({ lead: l, isNew: false })}
+                          title="Edit lead and assign an executive"
+                          aria-label={`Edit ${l.name} and assign an executive`}
+                          style={{ width: 28, height: 28, borderRadius: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: '#6366f1', cursor: 'pointer', flexShrink: 0 }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
                       {l.status !== 'Converted' && !l.convertedCustomerId && <ThemeSelect
                         value={l.status || 'New'}
                         onChange={e => handleStatusChange(l, e.target.value)}
