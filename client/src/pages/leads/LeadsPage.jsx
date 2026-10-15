@@ -315,6 +315,7 @@ export default function LeadsPage() {
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: SOURCE_COLOR[l.source] }}>
                       <SrcIcon size={12} /> {l.source}
                     </span>
+                    {l.websiteFormSource && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>{l.websiteFormSource}</div>}
                   </td>
                   <td title={leadDate.title} style={{ whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{leadDate.date}</div>

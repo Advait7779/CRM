@@ -1,4 +1,4 @@
-export const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services']
+export const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads']
 
 const DIGITAL_PRODUCTS = new Set([
   'SMS', 'WhatsApp WABA', 'RCS', 'Voice Call',
@@ -7,6 +7,7 @@ const DIGITAL_PRODUCTS = new Set([
 
 export function leadMatchesGroup(lead, group) {
   if (group === 'All') return true
+  if (group === 'Website Leads') return Boolean(lead.websiteLeadId)
   if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor'
     if (group === 'CCTV') return lead.justdialProduct === 'CCTV'
@@ -22,6 +23,14 @@ const leadDateFormatter = new Intl.DateTimeFormat('en-GB', { day: '2-digit', mon
 const leadTimeFormatter = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' })
 
 export function getLeadDate(lead) {
+  if (lead.websiteLeadId && lead.websiteSubmittedAt) {
+    const submittedAt = new Date(lead.websiteSubmittedAt)
+    if (!Number.isNaN(submittedAt.getTime())) return {
+      date: leadDateFormatter.format(submittedAt),
+      time: leadTimeFormatter.format(submittedAt),
+      title: 'Website enquiry date'
+    }
+  }
   const rawDate = lead.source === 'Justdial' ? lead.justdialPayload?.date : null
   const enquiryDate = typeof rawDate === 'string' ? rawDate.trim() : ''
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(enquiryDate)

@@ -15,6 +15,7 @@ const { connectDB, prisma } = require('./config/prisma');
 const { jsonReplacer } = require('./utils/prismaData');
 const apiRouter = require('./routes/api');
 const { createJustdialRouter } = require('./routes/justdial');
+const { startWebsiteSheetSync } = require('./services/websiteSheetSync');
 const { startScheduler } = require('./services/scheduler');
 const { isAllowedOrigin } = require('./utils/accessPolicy');
 
@@ -143,6 +144,7 @@ app.use((err, req, res, next) => {
 const PORT = Number(process.env.PORT || 5001);
 const HOST = process.env.HOST || (isProduction ? '0.0.0.0' : undefined);
 let stopScheduler = () => {};
+let stopWebsiteSheetSync = () => {};
 
 async function startServer() {
   if (isProduction) {
@@ -155,6 +157,7 @@ async function startServer() {
   }
   await connectDB();
   stopScheduler = startScheduler();
+  stopWebsiteSheetSync = startWebsiteSheetSync(prisma);
 
   return new Promise((resolve) => {
     const listenArgs = HOST ? [PORT, HOST] : [PORT];
@@ -168,6 +171,7 @@ async function startServer() {
 function shutdown(signal) {
   console.log(`${signal} received. Closing server.`);
   stopScheduler();
+  stopWebsiteSheetSync();
   server.close(async () => {
     try {
       await prisma.$disconnect();

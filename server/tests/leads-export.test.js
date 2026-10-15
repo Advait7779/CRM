@@ -12,12 +12,26 @@ const leads = [
 ]
 
 test('product filters match the mobile grouping, including unclassified leads in All', () => {
-  assert.deepEqual(LEAD_GROUPS, ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services'])
+  assert.deepEqual(LEAD_GROUPS, ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads'])
   assert.deepEqual(leads.filter(lead => leadMatchesGroup(lead, 'CCTV')).map(lead => lead.id), [1, 5])
   assert.deepEqual(leads.filter(lead => leadMatchesGroup(lead, 'GPS & Fuel Sensor')).map(lead => lead.id), [2])
   assert.deepEqual(leads.filter(lead => leadMatchesGroup(lead, 'Digital Services')).map(lead => lead.id), [3])
   assert.equal(leads.filter(lead => leadMatchesGroup(lead, 'All')).length, 5)
   assert.deepEqual(filterLeads(leads, 'CCTV', 'camera').map(lead => lead.id), [1])
+})
+
+test('Website Leads includes imported enquiries but excludes manually entered Website leads', async () => {
+  const imported = {
+    id: 6, name: 'Imported customer', phone: '1234567894', source: 'Website',
+    service: 'SMS Package', websiteLeadId: '42', websiteFormSource: 'Popup Free Demo Modal',
+    websiteSubmittedAt: '2026-10-09T04:30:00Z', createdAt: '2026-10-09T04:31:00Z', status: 'New'
+  }
+  const selected = filterLeads([...leads, imported], 'Website Leads', '')
+  assert.deepEqual(selected.map(lead => lead.id), [6])
+  const workbook = buildLeadsWorkbook(selected, 'Website Leads')
+  const sheet = workbook.getWorksheet('Leads')
+  assert.equal(sheet.getCell('O6').value, 'Popup Free Demo Modal')
+  assert.equal(sheet.getCell('I6').value.toISOString(), '2026-10-09T10:00:00.000Z')
 })
 
 test('Excel export preserves visible leads, phone text, dates and full notes in a readable layout', async () => {

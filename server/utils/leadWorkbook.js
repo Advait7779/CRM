@@ -1,7 +1,7 @@
 const ExcelJS = require('exceljs')
 const { jsonReplacer } = require('./prismaData')
 
-const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services']
+const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads']
 const DIGITAL_PRODUCTS = new Set([
   'SMS', 'WhatsApp WABA', 'RCS', 'Voice Call',
   'Website Development', 'Software Development', 'Digital Marketing'
@@ -9,6 +9,7 @@ const DIGITAL_PRODUCTS = new Set([
 
 function leadMatchesGroup(lead, group) {
   if (group === 'All') return true
+  if (group === 'Website Leads') return Boolean(lead.websiteLeadId)
   if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor'
     if (group === 'CCTV') return lead.justdialProduct === 'CCTV'
@@ -55,7 +56,8 @@ const columns = [
   { title: 'Status', key: 'status', width: 18 },
   { title: 'Executive', key: 'exec', width: 25 },
   { title: 'Follow-up Date', key: 'followUp', width: 21 },
-  { title: 'Notes Preview', key: 'notes', width: 58 }
+  { title: 'Notes Preview', key: 'notes', width: 58 },
+  { title: 'Website Form', key: 'websiteFormSource', width: 30 }
 ]
 
 function localExcelDate(value) {
@@ -79,6 +81,10 @@ function isoExcelDate(value, time = '') {
 }
 
 function leadExcelDate(lead) {
+  if (lead.websiteLeadId && lead.websiteSubmittedAt) {
+    const submittedAt = localExcelDate(lead.websiteSubmittedAt)
+    if (submittedAt) return submittedAt
+  }
   if (lead.source === 'Justdial') {
     const enquiryDate = isoExcelDate(lead.justdialPayload?.date, lead.justdialPayload?.time)
     if (enquiryDate) return enquiryDate
@@ -153,7 +159,7 @@ function buildLeadsWorkbook(leads, group = 'All', exportedAt = new Date()) {
     pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
   })
   sheet.columns = columns.map(({ key, width }) => ({ key, width }))
-  addHeading(sheet, 'N', 'LEAD MANAGEMENT', `${group}  •  ${leads.length} leads  •  Exported ${exportTimeFormatter.format(exportedAt)} IST  •  Full notes on the Notes tab`, 5)
+  addHeading(sheet, 'O', 'LEAD MANAGEMENT', `${group}  •  ${leads.length} leads  •  Exported ${exportTimeFormatter.format(exportedAt)} IST  •  Full notes on the Notes tab`, 5)
   styleHeader(sheet, 5, columns.map(column => column.title))
 
   leads.forEach((lead, index) => {
@@ -166,6 +172,7 @@ function buildLeadsWorkbook(leads, group = 'All', exportedAt = new Date()) {
       service: cellText(lead.service),
       product: lead.source === 'Justdial' ? cellText(lead.justdialProduct || 'Unclassified') : '',
       source: cellText(lead.source),
+      websiteFormSource: cellText(lead.websiteFormSource),
       leadDate: leadExcelDate(lead),
       receivedAt: localExcelDate(lead.createdAt),
       status: cellText(jsonReplacer('status', lead.status)),
@@ -181,7 +188,7 @@ function buildLeadsWorkbook(leads, group = 'All', exportedAt = new Date()) {
     if (lead.status === 'New') row.getCell('status').font = { name: 'Aptos', size: 10, bold: true, color: { argb: 'FF2563EB' } }
     if (lead.status === 'Converted' || lead.status === 'Won') row.getCell('status').font = { name: 'Aptos', size: 10, bold: true, color: { argb: 'FF059669' } }
   })
-  sheet.autoFilter = `A5:N${Math.max(6, sheet.lastRow.number)}`
+  sheet.autoFilter = `A5:O${Math.max(6, sheet.lastRow.number)}`
   sheet.pageSetup.printTitlesRow = '1:5'
 
   const notesSheet = workbook.addWorksheet('Notes', {
