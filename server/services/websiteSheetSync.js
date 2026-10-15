@@ -1,70 +1,63 @@
-const crypto = require('node:crypto');
 const { importWebsiteLead } = require('./websiteLeadImport');
 
-const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+const EXPECTED_HEADERS = ['ID', 'Name', 'Phone', 'Email', 'Service', 'Source Form', 'Status', 'Message', 'Date'];
 
 function sheetConfig(env = process.env) {
   const start = String(env.WEBSITE_SHEET_START_AFTER_ID || '').trim();
   const startAfterId = /^\d+$/.test(start) ? Number(start) : NaN;
-  const key = env.WEBSITE_SHEET_PRIVATE_KEY_BASE64
-    ? Buffer.from(env.WEBSITE_SHEET_PRIVATE_KEY_BASE64, 'base64').toString('utf8')
-    : String(env.WEBSITE_SHEET_PRIVATE_KEY || '').replace(/\\n/g, '\n');
   return {
-    spreadsheetId: String(env.WEBSITE_SHEET_SPREADSHEET_ID || '').trim(),
-    sheetName: String(env.WEBSITE_SHEET_TAB_NAME || 'Website Cms').trim(),
-    clientEmail: String(env.WEBSITE_SHEET_CLIENT_EMAIL || '').trim(),
-    privateKey: key,
+    webhookUrl: String(env.WEBSITE_SHEET_WEBHOOK_URL || '').trim(),
+    readSecret: String(env.WEBSITE_SHEET_READ_SECRET || '').trim(),
     startAfterId,
     intervalMinutes: Math.max(1, Number.parseInt(env.WEBSITE_SHEET_SYNC_INTERVAL_MINUTES || '5', 10) || 5)
   };
 }
 
 function isConfigured(config) {
-  return Boolean(config.spreadsheetId && config.sheetName && config.clientEmail && config.privateKey
+  let url;
+  try { url = new URL(config.webhookUrl); } catch { return false; }
+  return Boolean(url.protocol === 'https:' && url.hostname === 'script.google.com'
+    && /^\/macros\/s\/[^/]+\/exec$/.test(url.pathname)
+    && config.readSecret.length >= 32
     && Number.isSafeInteger(config.startAfterId) && config.startAfterId >= 0);
 }
 
-function base64url(value) {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-async function readJson(response, label) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`${label} failed (${response.status}): ${data?.error?.message || data.error_description || data.error || response.statusText}`);
-  return data;
-}
-
-async function getAccessToken(config, fetchImpl = fetch) {
-  const now = Math.floor(Date.now() / 1000);
-  const unsigned = `${base64url({ alg: 'RS256', typ: 'JWT' })}.${base64url({
-    iss: config.clientEmail, scope: SHEETS_SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600
-  })}`;
-  const signature = crypto.createSign('RSA-SHA256').update(unsigned).end().sign(config.privateKey, 'base64url');
-  const data = await readJson(await fetchImpl(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${signature}` }),
-    signal: AbortSignal.timeout(15000)
-  }), 'Google authorization');
-  if (!data.access_token) throw new Error('Google authorization returned no access token.');
-  return data.access_token;
-}
-
 async function readWebsiteRows(config, fetchImpl = fetch) {
-  const token = await getAccessToken(config, fetchImpl);
-  const range = `'${config.sheetName.replace(/'/g, "''")}'!A1:I`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(config.spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`;
-  const data = await readJson(await fetchImpl(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(20000)
-  }), 'Google Sheets read');
-  const rows = data.values || [];
-  const expected = ['ID', 'Name', 'Phone', 'Email', 'Service', 'Source Form', 'Status', 'Message', 'Date'];
-  if (!Array.isArray(rows) || !expected.every((header, index) => String(rows[0]?.[index] || '').trim() === header)) {
-    throw new Error('Website Cms sheet headers do not match the expected lead columns.');
+  const rows = [];
+  let afterId = config.startAfterId;
+  for (let page = 0; page < 1000; page += 1) {
+    const response = await fetchImpl(config.webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'readLeads', secret: config.readSecret, afterId }),
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20000)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) {
+      throw new Error(`Website sheet webhook read failed (${response.status}): ${data.error || response.statusText || 'unknown error'}`);
+    }
+    if (!Array.isArray(data.headers) || !EXPECTED_HEADERS.every((header, index) => data.headers[index] === header)
+      || !Array.isArray(data.rows) || data.rows.length > 250 || typeof data.hasMore !== 'boolean') {
+      throw new Error('Website Cms webhook returned an unexpected lead layout.');
+    }
+    if (!data.rows.length) {
+      if (data.hasMore) throw new Error('Website Cms webhook returned an empty page with more rows pending.');
+      return rows;
+    }
+    let lastId = afterId;
+    for (const row of data.rows) {
+      const id = Number(row?.[0]);
+      if (!Array.isArray(row) || !Number.isSafeInteger(id) || id <= lastId) {
+        throw new Error('Website Cms webhook returned an invalid page cursor.');
+      }
+      lastId = id;
+    }
+    rows.push(...data.rows);
+    if (!data.hasMore) return rows;
+    afterId = lastId;
   }
-  return rows.slice(1);
+  throw new Error('Website Cms webhook exceeded the page limit.');
 }
 
 function rowToLead(row) {
@@ -107,7 +100,7 @@ async function processWebsiteSheetLeads(prisma, { env = process.env, fetchImpl =
 function startWebsiteSheetSync(prisma, options = {}) {
   const config = sheetConfig(options.env || process.env);
   if (!isConfigured(config)) {
-    console.log('Website sheet sync disabled: configure sheet access and WEBSITE_SHEET_START_AFTER_ID.');
+    console.log('Website sheet sync disabled: configure the Apps Script read webhook and WEBSITE_SHEET_START_AFTER_ID.');
     return () => {};
   }
   let running = false;

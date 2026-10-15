@@ -1,33 +1,32 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const { processWebsiteSheetLeads, sheetConfig, isConfigured } = require('../services/websiteSheetSync');
 
-const privateKey = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' });
 const env = {
-  WEBSITE_SHEET_SPREADSHEET_ID: 'test-spreadsheet',
-  WEBSITE_SHEET_TAB_NAME: 'Website Cms',
-  WEBSITE_SHEET_CLIENT_EMAIL: 'reader@example.iam.gserviceaccount.com',
-  WEBSITE_SHEET_PRIVATE_KEY: privateKey,
+  WEBSITE_SHEET_WEBHOOK_URL: 'https://script.google.com/macros/s/test-deployment/exec',
+  WEBSITE_SHEET_READ_SECRET: 'test-read-secret-at-least-32-characters',
   WEBSITE_SHEET_START_AFTER_ID: '42'
 };
 const headers = ['ID', 'Name', 'Phone', 'Email', 'Service', 'Source Form', 'Status', 'Message', 'Date'];
 
 function fakeFetch(rows) {
   return async (url, options) => {
-    if (String(url).includes('oauth2.googleapis.com/token')) {
-      assert.match(String(options.body), /jwt-bearer/);
-      return { ok: true, json: async () => ({ access_token: 'test-access-token' }) };
-    }
-    assert.match(String(url), /sheets.googleapis.com/);
-    assert.match(String(url), /Website%20Cms/);
-    assert.equal(options.headers.Authorization, 'Bearer test-access-token');
-    return { ok: true, json: async () => ({ values: rows }) };
+    assert.equal(url, env.WEBSITE_SHEET_WEBHOOK_URL);
+    assert.equal(options.method, 'POST');
+    const body = JSON.parse(options.body);
+    assert.equal(body.action, 'readLeads');
+    assert.equal(body.secret, env.WEBSITE_SHEET_READ_SECRET);
+    return {
+      ok: true,
+      json: async () => ({ success: true, headers, rows: rows.slice(1).filter(row => Number(row[0]) > body.afterId), hasMore: false })
+    };
   };
 }
 
-test('sheet sync requires a starting ID and Google credentials before running', () => {
+test('sheet sync requires a starting ID and a secure Apps Script read secret', () => {
   assert.equal(isConfigured(sheetConfig({ ...env, WEBSITE_SHEET_START_AFTER_ID: '' })), false);
+  assert.equal(isConfigured(sheetConfig({ ...env, WEBSITE_SHEET_READ_SECRET: '' })), false);
+  assert.equal(isConfigured(sheetConfig({ ...env, WEBSITE_SHEET_WEBHOOK_URL: 'http://script.google.com/macros/s/test/exec' })), false);
   assert.equal(isConfigured(sheetConfig(env)), true);
 });
 
@@ -97,6 +96,21 @@ test('a malformed new row is skipped without blocking the next valid row', async
 });
 
 test('sheet header mismatch stops import', async () => {
-  const rows = [['Bad header', ...headers.slice(1)]];
-  await assert.rejects(processWebsiteSheetLeads({ leads: {} }, { env, fetchImpl: fakeFetch(rows) }), /headers/);
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ success: true, headers: ['Bad header', ...headers.slice(1)], rows: [], hasMore: false }) });
+  await assert.rejects(processWebsiteSheetLeads({ leads: {} }, { env, fetchImpl }), /layout/);
+});
+
+test('sheet webhook pages through more than 250 new leads', async () => {
+  const { readWebsiteRows } = require('../services/websiteSheetSync');
+  const rows = Array.from({ length: 251 }, (_, index) => [43 + index, 'Name', '9000000000', '', 'CCTV', 'Contact', 'New', '', '2026-10-15T05:00:00.000Z']);
+  let calls = 0;
+  const fetchImpl = async (_url, options) => {
+    const { afterId } = JSON.parse(options.body);
+    const page = rows.filter(row => row[0] > afterId).slice(0, 250);
+    calls += 1;
+    return { ok: true, json: async () => ({ success: true, headers, rows: page, hasMore: rows.some(row => row[0] > page.at(-1)?.[0]) }) };
+  };
+  const result = await readWebsiteRows(sheetConfig(env), fetchImpl);
+  assert.equal(result.length, 251);
+  assert.equal(calls, 2);
 });
