@@ -1,10 +1,11 @@
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useEffect, useState } from 'react'
-import { Plus, X, Key, Eye, EyeOff, Trash2, ShieldCheck, ShieldAlert, Pencil } from 'lucide-react'
+import { Plus, X, Key, Eye, EyeOff, Trash2, ShieldCheck, ShieldAlert, Pencil, LogIn } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ThemeSelect from '../../components/ThemeSelect'
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
+import { useAuth } from '../../context/AuthContext'
 
 const ROLES = [
   'director', 'accounts', 'sales_manager', 'sales_executive',
@@ -42,6 +43,7 @@ function ProductAccessPicker({ role, selected, options, onChange }) {
 }
 
 export default function UsersPage() {
+  const { user: currentUser, switchToUser } = useAuth()
   const [users, setUsers] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editModalUser, setEditModalUser] = useState(null)
@@ -51,6 +53,7 @@ export default function UsersPage() {
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [resetPasswordInput, setResetPasswordInput] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [switchingUserId, setSwitchingUserId] = useState(null)
   const [form, setForm] = useState(emptyForm)
 
   useEffect(() => {
@@ -133,6 +136,16 @@ export default function UsersPage() {
     })
   }
 
+  const handleSwitchToUser = async target => {
+    setSwitchingUserId(target.id)
+    try {
+      await switchToUser(target)
+    } catch (error) {
+      toast.error(error.message)
+      setSwitchingUserId(null)
+    }
+  }
+
   const handleSaveEdit = async event => {
     event.preventDefault()
     if (!editModalUser) return
@@ -192,6 +205,20 @@ export default function UsersPage() {
                       >
                         <Pencil size={15} style={{ color: '#f59e0b' }} />
                       </button>
+                      {!isSuperAdmin && (
+                        currentUser?.role === 'super_admin' && <button
+                          title={`Log in as ${user.name}`}
+                          aria-label={`Log in as ${user.name}`}
+                          disabled={switchingUserId !== null}
+                          style={{
+                            width: 32, height: 32, borderRadius: 8,
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)',
+                            cursor: switchingUserId === null ? 'pointer' : 'wait'
+                          }}
+                          onClick={() => handleSwitchToUser(user)}
+                        ><LogIn size={15} style={{ color: '#10b981' }} /></button>
+                      )}
                       {!isSuperAdmin && (
                         <button
                           title="Reset User Password"

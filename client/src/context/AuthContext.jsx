@@ -1,6 +1,8 @@
 /* eslint-disable react/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react'
 import { BASE } from '../utils/api'
+import { apiPost } from '../utils/api'
+import { IMPERSONATION_TOKEN, getActiveToken } from '../utils/impersonation'
 
 const AuthContext = createContext(null)
 
@@ -22,10 +24,12 @@ export const ROLES = {
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null)
   const [loading, setLoading] = useState(true)
+  const impersonating = Boolean(sessionStorage.getItem(IMPERSONATION_TOKEN))
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    const token = getActiveToken()
     if (!token) {
+      sessionStorage.removeItem(IMPERSONATION_TOKEN)
       setUser(null)
       setLoading(false)
       return
@@ -38,7 +42,21 @@ export function AuthProvider({ children }) {
           const profile = await response.json()
           setUser(profile)
         } else if (response.status === 401 || response.status === 403) {
+          const adminToken = sessionStorage.getItem(IMPERSONATION_TOKEN) && localStorage.getItem('token')
+          if (adminToken) {
+            const headers = { Authorization: `Bearer ${adminToken}` }
+            const restored = await fetch(`${BASE}/auth/restore-session`, { method: 'POST', headers, credentials: 'include' }).catch(() => null)
+            if (restored?.ok) {
+              const adminProfile = await fetch(`${BASE}/auth/profile`, { headers, credentials: 'include' })
+              if (adminProfile.ok) {
+                sessionStorage.removeItem(IMPERSONATION_TOKEN)
+                setUser(await adminProfile.json())
+                return
+              }
+            }
+          }
           localStorage.removeItem('token')
+          sessionStorage.removeItem(IMPERSONATION_TOKEN)
           setUser(null)
         }
       })
@@ -73,6 +91,7 @@ export function AuthProvider({ children }) {
       throw new Error(data?.message || 'Invalid credentials')
     }
     if (data?.token) {
+      sessionStorage.removeItem(IMPERSONATION_TOKEN)
       localStorage.setItem('token', data.token)
     }
     setUser(data?.user)
@@ -80,11 +99,36 @@ export function AuthProvider({ children }) {
   }
 
   const logout = async () => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('token') || getActiveToken()
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
     await fetch(`${BASE}/auth/logout`, { method: 'POST', headers, credentials: 'include' }).catch(() => {})
     localStorage.removeItem('token')
+    sessionStorage.removeItem(IMPERSONATION_TOKEN)
     setUser(null)
+  }
+
+  const switchToUser = async (targetUser) => {
+    if (user?.role !== ROLES.SUPER_ADMIN) throw new Error('Only Super Admin can switch accounts.')
+    const adminToken = localStorage.getItem('token')
+    if (!adminToken) throw new Error('Super Admin session is unavailable. Sign in again.')
+    const result = await apiPost(`/users/${targetUser.id}/impersonate`, {})
+    sessionStorage.setItem(IMPERSONATION_TOKEN, result.token)
+    window.location.replace('/')
+  }
+
+  const restoreSuperAdmin = async () => {
+    if (!sessionStorage.getItem(IMPERSONATION_TOKEN)) throw new Error('No switched account is active.')
+    const adminToken = localStorage.getItem('token')
+    if (!adminToken) throw new Error('Super Admin session is unavailable. Sign in again.')
+    const headers = { Authorization: `Bearer ${adminToken}` }
+    const profileResponse = await fetch(`${BASE}/auth/profile`, { headers, credentials: 'include' })
+    if (!profileResponse.ok) throw new Error('Super Admin session has expired. Sign in again.')
+    const profile = await profileResponse.json()
+    if (profile.role !== ROLES.SUPER_ADMIN) throw new Error('Super Admin session is no longer valid.')
+    const restoreResponse = await fetch(`${BASE}/auth/restore-session`, { method: 'POST', headers, credentials: 'include' })
+    if (!restoreResponse.ok) throw new Error('Could not restore the Super Admin session.')
+    sessionStorage.removeItem(IMPERSONATION_TOKEN)
+    window.location.replace('/users')
   }
 
   const updateUser = (changes) => {
@@ -101,7 +145,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser, hasPermission, ROLES }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, switchToUser, restoreSuperAdmin, impersonating, updateUser, hasPermission, ROLES }}>
       {!loading && children}
     </AuthContext.Provider>
   )

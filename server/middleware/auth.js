@@ -18,13 +18,26 @@ const authMiddleware = async (req, res, next) => {
     if (!user || Number(decoded.tokenVersion || 0) !== Number(user.tokenVersion || 0)) {
       return res.status(401).json({ message: 'Session has been revoked.' });
     }
+    let impersonatedBy = null;
+    if (decoded.impersonatedById !== undefined) {
+      const actor = await prisma.users.findUnique({
+        where: { id: Number(decoded.impersonatedById) },
+        select: { id: true, name: true, role: true, tokenVersion: true }
+      });
+      if (!actor || actor.role !== 'super_admin' || actor.id === user.id
+        || Number(decoded.impersonatedByTokenVersion) !== Number(actor.tokenVersion || 0)) {
+        return res.status(401).json({ message: 'Super Admin session has been revoked.' });
+      }
+      impersonatedBy = { id: actor.id, name: actor.name };
+    }
     req.user = {
       id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,
       tokenVersion: user.tokenVersion,
-      justdialProducts: user.justdialProducts
+      justdialProducts: user.justdialProducts,
+      impersonatedBy
     };
     return next();
   } catch {

@@ -1,11 +1,12 @@
 // Utility for authenticated API calls
+import { IMPERSONATION_TOKEN, getActiveToken } from './impersonation'
 const envBase = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
   ? String(import.meta.env.VITE_API_URL).trim().replace(/\/+$/, '')
   : '';
 export const BASE = envBase ? (envBase.endsWith('/api') ? envBase : `${envBase}/api`) : '/api';
 
 function authHeaders() {
-  const token = localStorage.getItem('token')
+  const token = getActiveToken()
   const headers = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
   return headers
@@ -13,6 +14,20 @@ function authHeaders() {
 
 async function handleResponse(res) {
   if (res.status === 401) {
+    const wasImpersonating = Boolean(sessionStorage.getItem(IMPERSONATION_TOKEN))
+    sessionStorage.removeItem(IMPERSONATION_TOKEN)
+    const adminToken = localStorage.getItem('token')
+    if (wasImpersonating && adminToken) {
+      const restored = await fetch(`${BASE}/auth/restore-session`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        credentials: 'include'
+      }).catch(() => null)
+      if (restored?.ok) {
+        window.location.href = '/users'
+        throw new Error('Switched account session ended. Returned to Super Admin.')
+      }
+    }
     localStorage.removeItem('token')
     window.location.href = '/login'
     throw new Error('Session expired. Please log in again.')
@@ -71,7 +86,7 @@ export async function apiDelete(path) {
 }
 
 export async function apiUpload(path, formData) {
-  const token = localStorage.getItem('token')
+  const token = getActiveToken()
   const headers = token ? { Authorization: `Bearer ${token}` } : {}
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
@@ -83,7 +98,7 @@ export async function apiUpload(path, formData) {
 }
 
 export async function apiDownload(path, filename) {
-  const token = localStorage.getItem('token')
+  const token = getActiveToken()
   const headers = token ? { Authorization: `Bearer ${token}` } : {}
   const res = await fetch(`${BASE}${path}`, {
     headers,

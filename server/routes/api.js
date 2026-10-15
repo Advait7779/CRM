@@ -211,6 +211,9 @@ function requireFields(payload, required) {
 
 async function audit(req, action, entity, entityId, metadata) {
   try {
+    const auditMetadata = req.user?.impersonatedBy
+      ? { ...(metadata && metadata !== Prisma.JsonNull ? metadata : {}), impersonatedByUserId: req.user.impersonatedBy.id, impersonatedByUserName: req.user.impersonatedBy.name }
+      : metadata || Prisma.JsonNull;
     await prisma.activityLogs.create({
       data: prepareData('activityLogs', {
         userId: req.user?.id || null,
@@ -218,7 +221,7 @@ async function audit(req, action, entity, entityId, metadata) {
         action,
         entity,
         entityId: entityId == null ? null : String(entityId),
-        metadata: metadata || Prisma.JsonNull,
+        metadata: auditMetadata,
         ip: req.ip
       }, { create: true })
     });
@@ -430,6 +433,22 @@ router.get('/auth/profile', authMiddleware, asyncHandler(async (req, res) => {
   res.json(user);
 }));
 
+router.post('/auth/restore-session', authMiddleware, asyncHandler(async (req, res) => {
+  if (req.user.role !== 'super_admin' || req.user.impersonatedBy) {
+    return res.status(403).json({ message: 'Only a direct Super Admin session can be restored.' });
+  }
+  const token = req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+  if (!token) return res.status(400).json({ message: 'Super Admin token is required.' });
+  res.cookie('sm_session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 8 * 60 * 60 * 1000,
+    path: '/'
+  });
+  res.json({ message: 'Super Admin session restored.' });
+}));
+
 router.post('/auth/logout', authMiddleware, asyncHandler(async (req, res) => {
   await prisma.users.update({
     where: { id: req.user.id },
@@ -454,6 +473,7 @@ router.put('/auth/profile', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 router.put('/auth/password', authMiddleware, asyncHandler(async (req, res) => {
+  if (req.user.impersonatedBy) return res.status(403).json({ message: 'Return to your own account to change its password.' });
   const currentPassword = String(req.body.currentPassword || '');
   const newPassword = String(req.body.newPassword || '');
   if (newPassword.length < 6) return res.status(400).json({ message: 'New password must be at least 6 characters.' });
@@ -520,6 +540,35 @@ router.post('/users', authMiddleware, checkRole(ADMIN), asyncHandler(async (req,
   const user = await prisma.users.create({ data: prepareData('users', payload, { create: true }), select: PUBLIC_USER_SELECT });
   await audit(req, 'create', 'user', user.id, { role: user.role });
   res.status(201).json(user);
+}));
+
+router.post('/users/:id/impersonate', authMiddleware, asyncHandler(async (req, res) => {
+  if (req.user.role !== 'super_admin' || req.user.impersonatedBy) {
+    return res.status(403).json({ message: 'Only Super Admin can log in as another user.' });
+  }
+  if (!/^Bearer\s+\S+$/i.test(req.header('Authorization') || '')) {
+    return res.status(403).json({ message: 'A direct Super Admin session is required.' });
+  }
+  const targetId = Number(req.params.id);
+  if (!Number.isSafeInteger(targetId) || targetId <= 0) return res.status(400).json({ message: 'Invalid user ID.' });
+  const target = await prisma.users.findUnique({ where: { id: targetId }, select: PUBLIC_USER_SELECT });
+  if (!target) return res.status(404).json({ message: 'User not found.' });
+  if (target.role === 'super_admin') return res.status(403).json({ message: 'Super Admin accounts cannot be selected.' });
+  const token = jwt.sign(
+    { id: target.id, tokenVersion: target.tokenVersion, impersonatedById: req.user.id, impersonatedByTokenVersion: req.user.tokenVersion },
+    process.env.JWT_SECRET,
+    { expiresIn: '30m' }
+  );
+  await audit(req, 'impersonate', 'user', target.id, { targetName: target.name, targetRole: target.role });
+  res.set('Cache-Control', 'no-store');
+  res.cookie('sm_session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 30 * 60 * 1000,
+    path: '/'
+  });
+  res.json({ token, user: target });
 }));
 
 router.put('/users/:id', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
