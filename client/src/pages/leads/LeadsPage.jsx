@@ -329,7 +329,7 @@ export default function LeadsPage() {
                   <td style={{ color: l.followUp ? '#f59e0b' : '#475569', fontSize: 13 }}>{l.followUp || '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {isAdmin && (
+                      {isAdmin && (l.source !== 'Justdial' || user?.role === 'super_admin') && (
                         <button
                           type="button"
                           onClick={() => setModal({ lead: l, isNew: false })}

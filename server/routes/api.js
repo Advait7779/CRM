@@ -885,13 +885,17 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     const payload = cleanBody(req.body, config.fields.filter((field) => field !== 'id'));
     if (routeName === 'leads') {
+      if (record.source === 'Justdial' && req.user.role !== 'super_admin'
+        && Object.keys(payload).some(field => !['status', 'followUp'].includes(field))) {
+        return res.status(403).json({ message: 'Only Super Admin can edit Justdial lead details.' });
+      }
       if (req.user.role === 'sales_executive') delete payload.exec;
       if (!ADMIN.includes(req.user.role)) delete payload.justdialProduct;
       if ((record.status === 'Converted' || record.convertedCustomerId) && payload.status !== undefined && payload.status !== 'Converted') {
         return res.status(409).json({ message: 'A converted lead cannot be given another status.' });
       }
       const nextSource = payload.source ?? record.source;
-      if (record.source === 'Justdial' && !ADMIN.includes(req.user.role)) {
+      if (record.source === 'Justdial' && req.user.role !== 'super_admin') {
         delete payload.source;
         delete payload.service;
         delete payload.justdialProduct;
@@ -902,7 +906,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
           payload.justdialProduct = classifyJustdialCategory(payload.service ?? record.service);
         }
       }
-      if (!canAccessLead(req.user, { ...record, ...payload, source: record.source === 'Justdial' && !ADMIN.includes(req.user.role) ? 'Justdial' : nextSource })) {
+      if (!canAccessLead(req.user, { ...record, ...payload, source: record.source === 'Justdial' && req.user.role !== 'super_admin' ? 'Justdial' : nextSource })) {
         return res.status(403).json({ message: 'This lead product is not permitted for your account.' });
       }
     }

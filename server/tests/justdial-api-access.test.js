@@ -14,7 +14,8 @@ const users = [
   { id: 2, name: 'Shubhangi', role: 'sales_executive', email: 'cctv@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] },
   { id: 3, name: 'GPS Executive', role: 'sales_executive', email: 'gps@example.test', tokenVersion: 0, justdialProducts: ['GPS & Fuel Sensor'] },
   { id: 4, name: 'CCTV too', role: 'sales_manager', email: 'cctv2@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] },
-  { id: 5, name: 'Sanika', role: 'sales_executive', email: 'sanika@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] }
+  { id: 5, name: 'Sanika', role: 'sales_executive', email: 'sanika@example.test', tokenVersion: 0, justdialProducts: ['CCTV'] },
+  { id: 6, name: 'Director', role: 'director', email: 'director@example.test', tokenVersion: 0, justdialProducts: [] }
 ];
 const leads = [
   { id: 11, name: 'Camera enquiry', phone: '9000000011', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', exec: 'Shubhangi', createdAt: new Date() },
@@ -46,7 +47,12 @@ const prisma = {
     async findMany({ where }) {
       return leads.filter(lead => matchesWhere(lead, where));
     },
-    async findUnique({ where }) { return leads.find(lead => lead.id === where.id) || null; }
+    async findUnique({ where }) { return leads.find(lead => lead.id === where.id) || null; },
+    async update({ where, data }) {
+      const lead = leads.find(item => item.id === where.id);
+      Object.assign(lead, data);
+      return lead;
+    }
   },
   appSettings: {
     async findMany({ where }) { return where.key.in.filter(key => settings.has(key)).map(key => ({ key, value: settings.get(key) })); },
@@ -114,6 +120,14 @@ test('Leads API scopes products across sources regardless of executive while Set
   assert.equal(exported.getWorksheet('Leads').getCell('B9').value, 'Assigned referral');
   assert.equal(exported.getWorksheet('Leads').getCell('B10').value, null);
   assert.equal((await request(2, '/leads-export.xlsx?group=invalid')).status, 400);
+
+  assert.equal((await request(2, '/leads/11', 'PUT', { notes: 'Changed by sales' })).status, 403);
+  assert.equal((await request(4, '/leads/11', 'PUT', { source: 'Website' })).status, 403);
+  assert.equal((await request(6, '/leads/11', 'PUT', { phone: '9000000099' })).status, 403);
+  assert.equal((await request(2, '/leads/11', 'PUT', { status: 'Interested' })).status, 200);
+  assert.equal((await request(2, '/leads/11', 'PUT', { followUp: '2026-10-20' })).status, 200);
+  assert.equal((await request(4, '/leads/17', 'PUT', { notes: 'Non-Justdial edit' })).status, 200);
+  assert.equal((await request(1, '/leads/11', 'PUT', { notes: 'Corrected by Super Admin' })).status, 200);
 
   const initial = await request(1, '/settings');
   assert.equal(initial.status, 200);

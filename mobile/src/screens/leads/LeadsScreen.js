@@ -145,6 +145,7 @@ export default function LeadsScreen() {
   };
 
   const openEditModal = (lead) => {
+    if (lead.source === 'Justdial' && user?.role !== 'super_admin') return;
     setEditingId(lead.id);
     setFormData({
       name: lead.name || '',
@@ -173,11 +174,7 @@ export default function LeadsScreen() {
       if (editingId) {
         const editingLead = leads.find(lead => lead.id === editingId);
         const payload = { ...formData };
-        if (editingLead?.source === 'Justdial' && !isAdmin) {
-          delete payload.source;
-          delete payload.service;
-          delete payload.justdialProduct;
-        }
+        if (editingLead?.source === 'Justdial' && user?.role !== 'super_admin') throw new Error('Only Super Admin can edit Justdial leads.');
         await apiPut(`/leads/${editingId}`, payload);
         Alert.alert('Success', 'Lead updated successfully');
       } else {
@@ -423,12 +420,12 @@ export default function LeadsScreen() {
                   ) : null}
                 </View>
 
-                <TouchableOpacity
+                {(item.source !== 'Justdial' || user?.role === 'super_admin') && <TouchableOpacity
                   style={[styles.editBtn, { backgroundColor: colors.cardSecondary }]}
                   onPress={() => openEditModal(item)}
                 >
                   <Text style={[styles.editBtnText, { color: colors.text }]}>Edit</Text>
-                </TouchableOpacity>
+                </TouchableOpacity>}
                 {item.status !== 'Converted' && !item.convertedCustomerId ? <TouchableOpacity
                   style={[styles.editBtn, { backgroundColor: colors.cardSecondary }]}
                   onPress={() => setStatusLead(item)}
