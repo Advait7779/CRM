@@ -42,7 +42,12 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    environment: *app-environment
+    environment:
+      <<: *app-environment
+      WEBSITE_SHEET_WEBHOOK_URL: ${WEBSITE_SHEET_WEBHOOK_URL:-}
+      WEBSITE_SHEET_READ_SECRET: ${WEBSITE_SHEET_READ_SECRET:-}
+      WEBSITE_SHEET_START_AFTER_ID: ${WEBSITE_SHEET_START_AFTER_ID:-}
+      WEBSITE_SHEET_SYNC_INTERVAL_MINUTES: ${WEBSITE_SHEET_SYNC_INTERVAL_MINUTES:-5}
     volumes:
       - crm_uploads:/app/uploads
     expose:
