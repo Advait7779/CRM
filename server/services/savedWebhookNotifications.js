@@ -12,7 +12,15 @@ const JUSTDIAL_CHANNELS = ['sms', 'rcs', 'voice', 'whatsapp'];
 const JUSTDIAL_WEBHOOK_SETTING_KEYS = JUSTDIAL_GROUPS.flatMap(group =>
   JUSTDIAL_CHANNELS.map(channel => `justdial_${group}_${channel}_webhook_url`)
 );
-const ALL_WEBHOOK_SETTING_KEYS = [...WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, ...JUSTDIAL_WEBHOOK_SETTING_KEYS];
+const GREETING_OCCASIONS = ['birthday', 'anniversary'];
+const GREETING_CHANNELS = ['sms', 'voice'];
+const GREETING_SETTING_KEYS = GREETING_OCCASIONS.flatMap(occasion =>
+  GREETING_CHANNELS.flatMap(channel => [
+    `greeting_${occasion}_${channel}_webhook_url`,
+    `greeting_${occasion}_${channel}_preview_text`
+  ])
+);
+const ALL_WEBHOOK_SETTING_KEYS = [...WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, ...JUSTDIAL_WEBHOOK_SETTING_KEYS, ...GREETING_SETTING_KEYS];
 
 function webhookUrlForPhone(template, phone) {
   const digits = String(phone || '').replace(/[^0-9]/g, '');
@@ -102,6 +110,6 @@ async function sendJustdialWebhookNotifications(prisma, lead, payload, fetchImpl
 }
 
 module.exports = {
-  WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
+  WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, GREETING_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
   webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
 };

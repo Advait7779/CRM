@@ -71,7 +71,7 @@ test('new CRM leads use only the separate new lead SMS URL', async () => {
 });
 
 test('Justdial sends the four URLs for the matching product group only', async () => {
-  assert.equal(ALL_WEBHOOK_SETTING_KEYS.length, 17);
+  assert.equal(ALL_WEBHOOK_SETTING_KEYS.length, 25);
   assert.equal(JUSTDIAL_WEBHOOK_SETTING_KEYS.length, 12);
   const requested = [];
   const prisma = { appSettings: { async findMany({ where }) {
