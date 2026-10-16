@@ -2,6 +2,8 @@ const DATE_ONLY_FIELDS = new Set([
   'date',
   'followUp',
   'renewalDate',
+  'birthday',
+  'anniversary',
   'goLive',
   'lastDate',
   'nextDue',

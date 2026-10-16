@@ -3,8 +3,9 @@ import { useState, useEffect } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import ThemeSelect from '../../components/ThemeSelect'
 import { apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
-import { Plus, Search, X, Check, Eye, Pencil } from 'lucide-react'
+import { Plus, Search, X, Check, Eye, Pencil, MessageSquare, PhoneCall } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 
 const SERVICES = ['GPS', 'CCTV', 'Website', 'SMS', 'RCS', 'Voice', 'Waba']
@@ -29,11 +30,19 @@ const combineServices = (selected, others) => {
 
 const EMPTY_FORM = {
   name: '', contact: '', phone: '', email: '', gst: '', address: '',
-  services: [], otherServices: '', vehicles: 0, cctv: 0, domain: '', hosting: '', websiteUrl: '', renewalDate: '', status: 'Active', assignedTo: ''
+  services: [], otherServices: '', vehicles: 0, cctv: 0, domain: '', hosting: '', websiteUrl: '', renewalDate: '', birthday: '', anniversary: '', status: 'Active', assignedTo: ''
+}
+
+const displayDate = value => {
+  const date = String(value || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '—'
+  return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
 }
 
 export default function CustomersPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canSendGreetings = ['super_admin', 'director', 'sales_manager', 'sales_executive'].includes(user?.role)
   const [customers, setCustomers] = useState([])
   const [systemUsers, setSystemUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -42,6 +51,14 @@ export default function CustomersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [greetingCustomer, setGreetingCustomer] = useState(null)
+  const [greetingChannel, setGreetingChannel] = useState('sms')
+  const [greetingOccasion, setGreetingOccasion] = useState('birthday')
+  const [greetingPreview, setGreetingPreview] = useState(null)
+  const [greetingError, setGreetingError] = useState('')
+  const [greetingLoading, setGreetingLoading] = useState(false)
+  const [greetingSending, setGreetingSending] = useState(false)
+  const [greetingRequestId, setGreetingRequestId] = useState('')
 
   useEffect(() => {
     apiGetAll('/customers')
@@ -52,6 +69,50 @@ export default function CustomersPage() {
       .then(data => setSystemUsers(Array.isArray(data) ? data : []))
       .catch(() => toast.error('Could not load system users for customer assignment.'))
   }, [])
+
+  useEffect(() => {
+    if (!greetingCustomer) return
+    let active = true
+    setGreetingLoading(true)
+    setGreetingPreview(null)
+    setGreetingError('')
+    apiGet(`/customers/${greetingCustomer.id}/greetings/preview?occasion=${greetingOccasion}&channel=${greetingChannel}`)
+      .then(preview => {
+        if (!active) return
+        setGreetingPreview(preview)
+        setGreetingRequestId(crypto.randomUUID())
+      })
+      .catch(error => { if (active) setGreetingError(error.message) })
+      .finally(() => { if (active) setGreetingLoading(false) })
+    return () => { active = false }
+  }, [greetingCustomer, greetingChannel, greetingOccasion])
+
+  const openGreeting = (customer, channel) => {
+    setGreetingCustomer(customer)
+    setGreetingChannel(channel)
+    setGreetingOccasion(customer.birthday ? 'birthday' : 'anniversary')
+  }
+
+  const sendGreeting = async () => {
+    if (!greetingPreview || !greetingRequestId || greetingSending) return
+    setGreetingSending(true)
+    setGreetingError('')
+    try {
+      const result = await apiPost(`/customers/${greetingCustomer.id}/greetings/send`, {
+        occasion: greetingOccasion,
+        channel: greetingChannel,
+        requestId: greetingRequestId,
+        previewHash: greetingPreview.previewHash
+      })
+      toast.success(result.message)
+      setGreetingCustomer(null)
+    } catch (error) {
+      setGreetingError(`${error.message} Close this popup and check the provider before sending again.`)
+      setGreetingPreview(null)
+    } finally {
+      setGreetingSending(false)
+    }
+  }
 
   const handleOpenCreate = () => {
     setEditingCustomer(null)
@@ -76,6 +137,8 @@ export default function CustomersPage() {
       hosting: customer.hosting || '',
       websiteUrl: customer.websiteUrl || '',
       renewalDate: customer.renewalDate ? String(customer.renewalDate).slice(0, 10) : '',
+      birthday: customer.birthday ? String(customer.birthday).slice(0, 10) : '',
+      anniversary: customer.anniversary ? String(customer.anniversary).slice(0, 10) : '',
       status: customer.status || 'Active',
       assignedTo: customer.assignedTo || ''
     })
@@ -199,14 +262,14 @@ export default function CustomersPage() {
 
       {/* Table */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ minWidth: 850 }}>
+        <table className="data-table" style={{ minWidth: 1050 }}>
           <thead>
             <tr>
               <th>Customer Name</th>
-              <th>GST Details</th>
               <th>Phone</th>
+              <th>Birthday</th>
+              <th>Anniversary</th>
               <th>Services</th>
-              <th>Vehicles</th>
               <th>Assigned To</th>
               <th>Next Renewal</th>
               <th>Status</th>
@@ -227,8 +290,9 @@ export default function CustomersPage() {
                     </div>
                   </div>
                 </td>
-                <td style={{ color: '#94a3b8', fontSize: 13 }}>{c.gst || '—'}</td>
                 <td style={{ color: '#94a3b8', fontSize: 13 }}>{c.phone}</td>
+                <td style={{ color: 'var(--text-secondary)', fontSize: 13, whiteSpace: 'nowrap' }}>{displayDate(c.birthday)}</td>
+                <td style={{ color: 'var(--text-secondary)', fontSize: 13, whiteSpace: 'nowrap' }}>{displayDate(c.anniversary)}</td>
                 <td>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {getServicesArray(c.services).map(s => (
@@ -236,7 +300,6 @@ export default function CustomersPage() {
                     ))}
                   </div>
                 </td>
-                <td style={{ color: '#f1f5f9', fontWeight: 600 }}>{c.vehicles || '—'}</td>
                 <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{c.assignedTo || '—'}</td>
                 <td style={{ color: '#94a3b8', fontSize: 13 }}>{c.renewalDate || '—'}</td>
                 <td>
@@ -268,6 +331,16 @@ export default function CustomersPage() {
                     >
                       <Pencil size={15} style={{ color: '#f59e0b' }} />
                     </button>
+                    {canSendGreetings && <button type="button" onClick={() => openGreeting(c, 'sms')} disabled={!c.birthday && !c.anniversary}
+                      title={c.birthday || c.anniversary ? 'Send greeting SMS' : 'Add a birthday or anniversary first'}
+                      className="btn-secondary" style={{ padding: '6px 8px', fontSize: 12, whiteSpace: 'nowrap', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+                      <MessageSquare size={14} /> Send SMS
+                    </button>}
+                    {canSendGreetings && <button type="button" onClick={() => openGreeting(c, 'voice')} disabled={!c.birthday && !c.anniversary}
+                      title={c.birthday || c.anniversary ? 'Send greeting voice call' : 'Add a birthday or anniversary first'}
+                      className="btn-secondary" style={{ padding: '6px 8px', fontSize: 12, whiteSpace: 'nowrap', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+                      <PhoneCall size={14} /> Send Voice
+                    </button>}
                   </div>
                 </td>
               </tr>
@@ -405,8 +478,16 @@ export default function CustomersPage() {
                 </div>
               )}
 
-              {/* Renewal Date, Account Status & Assign To */}
+              {/* Customer dates, account status and assignment */}
               <div className="form-grid-2" style={{ marginBottom: 20 }}>
+                <div className="form-group">
+                  <label className="form-label">Contact Birthday</label>
+                  <ThemeDatePicker value={form.birthday} onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Contact Anniversary</label>
+                  <ThemeDatePicker value={form.anniversary} onChange={e => setForm(f => ({ ...f, anniversary: e.target.value }))} />
+                </div>
                 <div className="form-group">
                   <label className="form-label">Renewal Date</label>
                   <ThemeDatePicker value={form.renewalDate} onChange={e => setForm(f => ({ ...f, renewalDate: e.target.value }))} />
@@ -447,6 +528,59 @@ export default function CustomersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {greetingCustomer && (
+        <ModalBackdrop className="modal-backdrop" onClick={() => { if (!greetingSending) setGreetingCustomer(null) }}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 20, color: 'var(--text-primary)', margin: 0 }}>Review greeting before sending</h2>
+              <button type="button" disabled={greetingSending} onClick={() => setGreetingCustomer(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }} aria-label="Close greeting preview"><X size={20} /></button>
+            </div>
+            <div className="form-grid-2" style={{ marginBottom: 18 }}>
+              <div className="form-group">
+                <label className="form-label">Occasion</label>
+                <select className="input-field" value={greetingOccasion} disabled={greetingSending} onChange={e => setGreetingOccasion(e.target.value)}>
+                  <option value="birthday" disabled={!greetingCustomer.birthday}>Birthday</option>
+                  <option value="anniversary" disabled={!greetingCustomer.anniversary}>Anniversary</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Channel</label>
+                <select className="input-field" value={greetingChannel} disabled={greetingSending} onChange={e => setGreetingChannel(e.target.value)}>
+                  <option value="sms">SMS</option>
+                  <option value="voice">Voice Call</option>
+                </select>
+              </div>
+            </div>
+            {greetingLoading && <p style={{ color: 'var(--text-secondary)' }}>Loading preview...</p>}
+            {greetingError && <p role="alert" style={{ color: '#ef4444', fontSize: 13 }}>{greetingError}</p>}
+            {greetingPreview && (
+              <div style={{ display: 'grid', gap: 12, fontSize: 13, color: 'var(--text-primary)' }}>
+                <div><strong>Customer:</strong> {greetingPreview.customerName}{greetingPreview.contactName ? ` — ${greetingPreview.contactName}` : ''}</div>
+                <div><strong>Recipient:</strong> {greetingPreview.phone}</div>
+                <div><strong>Occasion date:</strong> {displayDate(greetingPreview.date)}</div>
+                {!greetingPreview.isToday && <div style={{ color: '#b45309' }}>This occasion is not today. Check the date before sending.</div>}
+                <div><strong>{greetingChannel === 'sms' ? 'SMS message' : 'Voice script or recording'}:</strong>
+                  <div style={{ whiteSpace: 'pre-wrap', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', padding: 12, borderRadius: 8, marginTop: 6 }}>
+                    {greetingPreview.message || 'No preview text was provided in Settings. Check the provider template before sending.'}
+                  </div>
+                </div>
+                {greetingPreview.templateId && <div><strong>Provider template ID:</strong> {greetingPreview.templateId}</div>}
+                <div><strong>Provider URL (credentials hidden):</strong>
+                  <div style={{ overflowWrap: 'anywhere', fontFamily: 'monospace', fontSize: 11, marginTop: 5 }}>{greetingPreview.url}</div>
+                </div>
+                {greetingPreview.lastSend && <div style={{ color: 'var(--text-secondary)' }}>Last attempt: {greetingPreview.lastSend.status} on {new Date(greetingPreview.lastSend.createdAt).toLocaleString('en-IN')}</div>}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+              <button type="button" className="btn-secondary" disabled={greetingSending} onClick={() => setGreetingCustomer(null)}>Cancel</button>
+              <button type="button" className="btn-primary" disabled={!greetingPreview || greetingLoading || greetingSending} onClick={sendGreeting}>
+                {greetingSending ? 'Sending...' : `Confirm and send ${greetingChannel === 'sms' ? 'SMS' : 'voice call'}`}
+              </button>
+            </div>
           </div>
         </ModalBackdrop>
       )}

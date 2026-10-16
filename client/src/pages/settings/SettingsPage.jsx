@@ -16,9 +16,19 @@ const JUSTDIAL_CHANNELS = [
   { id: 'voice', label: 'Voice Call' },
   { id: 'whatsapp', label: 'WhatsApp WABA' }
 ]
+const GREETING_OPTIONS = [
+  { occasion: 'birthday', channel: 'sms', label: 'Birthday SMS' },
+  { occasion: 'birthday', channel: 'voice', label: 'Birthday Voice Call' },
+  { occasion: 'anniversary', channel: 'sms', label: 'Anniversary SMS' },
+  { occasion: 'anniversary', channel: 'voice', label: 'Anniversary Voice Call' }
+]
 const SETTING_KEYS = [
   ...CUSTOMER_SETTING_KEYS,
   'new_lead_sms_webhook_url',
+  ...GREETING_OPTIONS.flatMap(option => [
+    `greeting_${option.occasion}_${option.channel}_webhook_url`,
+    `greeting_${option.occasion}_${option.channel}_preview_text`
+  ]),
   ...JUSTDIAL_GROUPS.flatMap(group => JUSTDIAL_CHANNELS.map(channel => `justdial_${group.id}_${channel.id}_webhook_url`))
 ]
 const emptySettings = () => Object.fromEntries(SETTING_KEYS.map(key => [key, '']))
@@ -76,7 +86,7 @@ export default function SettingsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">Configure separate notification URLs for new customers and Justdial enquiries.</p>
+          <p className="page-subtitle">Configure notification URLs for customers, greetings, and Justdial enquiries.</p>
         </div>
       </div>
 
@@ -214,6 +224,46 @@ export default function SettingsPage() {
               style={{ minHeight: 92, fontSize: 12, fontFamily: 'monospace', resize: 'vertical', lineHeight: 1.5 }}
             />
             <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>Use {'{phone}'} in the recipient parameter, or an existing phone/number parameter will be replaced.</p>
+          </div>
+        </section>
+
+        <section style={{ marginTop: 36 }}>
+          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>Birthday and Anniversary Greetings</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>
+            These URLs run only after a staff member reviews and confirms a greeting from a customer row. Use {'{phone}'} for the recipient and {'{name}'} or [alp] in SMS text for the contact name.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 18 }}>
+            {GREETING_OPTIONS.map(option => {
+              const prefix = `greeting_${option.occasion}_${option.channel}`
+              return (
+                <div className="glass-card" key={prefix} style={{ padding: 22 }}>
+                  <h3 style={{ margin: '0 0 14px', fontSize: 16 }}>{option.label}</h3>
+                  <div className="form-group" style={{ marginBottom: 14 }}>
+                    <label className="form-label">Provider URL</label>
+                    <textarea
+                      className="input-field"
+                      value={form[`${prefix}_webhook_url`]}
+                      onChange={e => setForm(current => ({ ...current, [`${prefix}_webhook_url`]: e.target.value }))}
+                      placeholder="https://provider.example/send?phone={phone}&templateid=..."
+                      style={{ minHeight: 95, fontSize: 12, fontFamily: 'monospace', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Message or voice script shown in preview</label>
+                    <textarea
+                      className="input-field"
+                      value={form[`${prefix}_preview_text`]}
+                      onChange={e => setForm(current => ({ ...current, [`${prefix}_preview_text`]: e.target.value }))}
+                      placeholder={option.channel === 'sms' ? 'Happy Birthday, {name}!' : 'Description of the voice recording or script'}
+                      style={{ minHeight: 80, fontSize: 12, resize: 'vertical' }}
+                    />
+                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
+                      {option.channel === 'sms' ? 'For accuracy, this text should match the SMS approved with your provider.' : 'This is a preview description; the voice provider controls the recording.'}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </section>
 

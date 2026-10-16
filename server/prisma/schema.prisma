@@ -83,6 +83,8 @@ model Customers {
   domain                String?                 @db.VarChar(255)
   hosting               String?                 @db.VarChar(255)
   renewalDate           DateTime?               @db.Date
+  birthday              DateTime?               @db.Date
+  anniversary           DateTime?               @db.Date
   status                String?                 @default("Active") @db.VarChar(255)
   assignedTo            String?                 @db.VarChar(255)
   latitude              Float?
@@ -497,6 +499,21 @@ model AppSettings {
   key       String   @id @db.VarChar(255)
   value     String?
   updatedAt DateTime @db.Timestamptz(6)
+}
+
+model CustomerGreetingDeliveries {
+  id              String   @id @db.Uuid
+  customerId      Int
+  occasion        String   @db.VarChar(20)
+  channel         String   @db.VarChar(10)
+  requestedById   Int
+  status          String   @db.VarChar(20)
+  providerStatus  Int?
+  error           String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([customerId, createdAt], map: "customer_greetings_customer_created")
 }
 
 

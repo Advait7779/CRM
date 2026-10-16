@@ -11,6 +11,7 @@ const { currentDateOnly, prepareData, prismaId, toDateOnly } = require('../utils
 const { authMiddleware, checkRole } = require('../middleware/auth');
 const { sendMultiChannelNotification } = require('../services/notificationService');
 const { ALL_WEBHOOK_SETTING_KEYS, sendSavedWebhookNotifications, sendNewLeadSmsNotification } = require('../services/savedWebhookNotifications');
+const { validDateOnly, buildGreeting, deliverGreeting } = require('../services/customerGreetings');
 const { isGroupMember, groupAccessWhere } = require('../utils/accessPolicy');
 const { JUSTDIAL_PRODUCTS, ASSIGNABLE_PRODUCTS, classifyJustdialCategory, validProductSelection, leadAccessWhere, canAccessLead } = require('../services/justdialProducts');
 const { LEAD_GROUPS, filterLeads, buildLeadsWorkbook } = require('../utils/leadWorkbook');
@@ -128,7 +129,7 @@ const RESOURCE_CONFIG = {
   },
   customers: {
     model: 'customers',
-    fields: ['name', 'contact', 'phone', 'email', 'gst', 'address', 'services', 'vehicles', 'cctv', 'domain', 'hosting', 'renewalDate', 'status', 'assignedTo', 'latitude', 'longitude'],
+    fields: ['name', 'contact', 'phone', 'email', 'gst', 'address', 'services', 'vehicles', 'cctv', 'domain', 'hosting', 'renewalDate', 'birthday', 'anniversary', 'status', 'assignedTo', 'latitude', 'longitude'],
     required: ['name', 'phone'],
     roles: SALES,
     readRoles: ALL_STAFF
@@ -720,6 +721,9 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
       return res.status(403).json({ message: 'Installers are not permitted to allocate new installations.' });
     }
     const payload = cleanBody(req.body, config.fields);
+    if (routeName === 'customers' && ['birthday', 'anniversary'].some(field => !validDateOnly(payload[field]))) {
+      return res.status(400).json({ message: 'Birthday and anniversary must be valid dates.' });
+    }
     if (routeName === 'leads') {
       if (req.user.role === 'sales_executive') payload.exec = req.user.name;
       payload.justdialProduct = classifyJustdialCategory(payload.service);
@@ -884,6 +888,9 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     if (!record) return res.status(404).json({ message: `${routeName.slice(0, -1)} not found.` });
     if (routeName === 'leads' && !canAccessLead(req.user, record)) return res.status(404).json({ message: 'Lead not found.' });
     const payload = cleanBody(req.body, config.fields.filter((field) => field !== 'id'));
+    if (routeName === 'customers' && ['birthday', 'anniversary'].some(field => !validDateOnly(payload[field]))) {
+      return res.status(400).json({ message: 'Birthday and anniversary must be valid dates.' });
+    }
     if (routeName === 'leads') {
       if (record.source === 'Justdial' && req.user.role !== 'super_admin'
         && Object.keys(payload).some(field => !['status', 'followUp'].includes(field))) {
@@ -2788,6 +2795,59 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
     servicesDistribution,
     operationsHistory
   });
+}));
+
+// ─── Manually confirmed customer greetings ──────────────────────────────────
+async function greetingFromSettings(customerId, occasion, channel) {
+  const customer = await prisma.customers.findUnique({ where: { id: customerId } });
+  const prefix = `greeting_${occasion}_${channel}`;
+  const rows = await prisma.appSettings.findMany({ where: { key: { in: [`${prefix}_webhook_url`, `${prefix}_preview_text`] } } });
+  const settings = Object.fromEntries(rows.map(row => [row.key, row.value || '']));
+  return buildGreeting(customer, settings, occasion, channel);
+}
+
+router.get('/customers/:id/greetings/preview', authMiddleware, checkRole(SALES), asyncHandler(async (req, res) => {
+  const customerId = prismaId('customers', req.params.id);
+  const { url, preview } = await greetingFromSettings(customerId, req.query.occasion, req.query.channel);
+  const last = await prisma.customerGreetingDeliveries.findFirst({
+    where: { customerId, occasion: preview.occasion, channel: preview.channel },
+    orderBy: { createdAt: 'desc' },
+    select: { status: true, createdAt: true }
+  });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ...preview, previewHash: crypto.createHash('sha256').update(url + preview.date).digest('hex'), lastSend: last });
+}));
+
+router.post('/customers/:id/greetings/send', authMiddleware, checkRole(SALES), asyncHandler(async (req, res) => {
+  const customerId = prismaId('customers', req.params.id);
+  const { occasion, channel, requestId, previewHash } = req.body || {};
+  if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+    return res.status(400).json({ message: 'Invalid confirmation request.' });
+  }
+  const { url, preview } = await greetingFromSettings(customerId, occasion, channel);
+  const currentHash = crypto.createHash('sha256').update(url + preview.date).digest('hex');
+  if (previewHash !== currentHash) return res.status(409).json({ message: 'Customer or template changed. Review the greeting again before sending.' });
+  try {
+    await prisma.customerGreetingDeliveries.create({
+      data: { id: requestId, customerId, occasion, channel, requestedById: req.user.id, status: 'pending' }
+    });
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ message: 'This greeting confirmation was already submitted.' });
+    throw error;
+  }
+  let result;
+  try {
+    result = await deliverGreeting(url);
+  } catch (error) {
+    result = { ok: false, error: error.name === 'TimeoutError' ? 'Provider request timed out.' : 'Could not reach the provider.' };
+  }
+  await prisma.customerGreetingDeliveries.update({
+    where: { id: requestId },
+    data: { status: result.ok ? 'sent' : 'failed', providerStatus: result.providerStatus || null, error: result.error || null }
+  });
+  await audit(req, result.ok ? 'send' : 'send_failed', 'customer_greeting', customerId, { occasion, channel, requestId, providerStatus: result.providerStatus || null });
+  if (!result.ok) return res.status(502).json({ message: result.error });
+  res.json({ success: true, message: 'Greeting request accepted by provider.' });
 }));
 
 // ─── Settings (Admin-only) ───────────────────────────────────────────────────
