@@ -29,7 +29,7 @@ const combineServices = (selected, others) => {
 }
 
 const EMPTY_FORM = {
-  name: '', contact: '', phone: '', email: '', gst: '', address: '',
+  name: '', contact: '', phone: '', email: '', address: '',
   services: [], otherServices: '', vehicles: 0, cctv: 0, domain: '', hosting: '', websiteUrl: '', renewalDate: '', birthday: '', anniversary: '', status: 'Active', assignedTo: ''
 }
 
@@ -127,7 +127,6 @@ export default function CustomersPage() {
       contact: customer.contact || '',
       phone: customer.phone || '',
       email: customer.email || '',
-      gst: customer.gst || '',
       address: customer.address || '',
       services: getServicesArray(customer.services).filter(service => SERVICES.includes(service)),
       otherServices: getServicesArray(customer.services).filter(service => !SERVICES.includes(service)).join(', '),
@@ -379,11 +378,7 @@ export default function CustomersPage() {
                   <label className="form-label">Email Address</label>
                   <input className="input-field" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">GST Number</label>
-                  <input className="input-field" value={form.gst} onChange={e => setForm(f => ({ ...f, gst: e.target.value.toUpperCase() }))} placeholder="e.g. 27AAAAA1111A1Z1" />
-                </div>
-                <div className="form-group">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label className="form-label">Address</label>
                   <input className="input-field" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
                 </div>
