@@ -14,12 +14,24 @@ function sheetConfig(env = process.env) {
 }
 
 function isConfigured(config) {
+  return configurationIssues(config).length === 0;
+}
+
+function configurationIssues(config) {
+  const issues = [];
   let url;
-  try { url = new URL(config.webhookUrl); } catch { return false; }
-  return Boolean(url.protocol === 'https:' && url.hostname === 'script.google.com'
-    && /^\/macros\/s\/[^/]+\/exec$/.test(url.pathname)
-    && config.readSecret.length >= 32
-    && Number.isSafeInteger(config.startAfterId) && config.startAfterId >= 0);
+  try { url = new URL(config.webhookUrl); } catch { /* Report a safe reason below. */ }
+  if (!url || url.protocol !== 'https:' || url.hostname !== 'script.google.com'
+    || !/^\/macros\/s\/[^/]+\/exec$/.test(url.pathname)) {
+    issues.push('WEBSITE_SHEET_WEBHOOK_URL must be an HTTPS Apps Script /exec URL');
+  }
+  if (config.readSecret.length < 32) {
+    issues.push('WEBSITE_SHEET_READ_SECRET must have at least 32 characters');
+  }
+  if (!Number.isSafeInteger(config.startAfterId) || config.startAfterId < 0) {
+    issues.push('WEBSITE_SHEET_START_AFTER_ID must be a nonnegative integer');
+  }
+  return issues;
 }
 
 async function readWebsiteRows(config, fetchImpl = fetch) {
@@ -99,8 +111,9 @@ async function processWebsiteSheetLeads(prisma, { env = process.env, fetchImpl =
 
 function startWebsiteSheetSync(prisma, options = {}) {
   const config = sheetConfig(options.env || process.env);
-  if (!isConfigured(config)) {
-    console.log('Website sheet sync disabled: configure the Apps Script read webhook and WEBSITE_SHEET_START_AFTER_ID.');
+  const issues = configurationIssues(config);
+  if (issues.length) {
+    console.log(`Website sheet sync disabled: ${issues.join('; ')}.`);
     return () => {};
   }
   let running = false;
@@ -124,4 +137,4 @@ function startWebsiteSheetSync(prisma, options = {}) {
   return () => { clearTimeout(startup); clearInterval(interval); };
 }
 
-module.exports = { sheetConfig, isConfigured, readWebsiteRows, rowToLead, processWebsiteSheetLeads, startWebsiteSheetSync };
+module.exports = { sheetConfig, isConfigured, configurationIssues, readWebsiteRows, rowToLead, processWebsiteSheetLeads, startWebsiteSheetSync };

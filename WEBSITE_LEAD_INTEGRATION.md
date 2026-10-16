@@ -8,7 +8,7 @@ The website already saves enquiry forms in PostgreSQL and sends them to the **We
 2. In the same Apps Script project, replace the webhook code with the updated `backend/googleAppsScriptWebhook.gs` from the Advait Digital website repository. Save it, then edit the **existing web-app deployment** to use a **new version**. This preserves the existing webhook URL. Verify one website enquiry still appears in the sheet.
 3. Because the write secret appeared in chat, generate a replacement and change `WEBHOOK_SECRET` in Apps Script and `GOOGLE_SHEETS_WEBHOOK_SECRET` in the website backend's Coolify environment close together. Restart the backend and verify another enquiry reaches the sheet. The website backend retries temporary Sheet sync failures.
 4. Deploy the CRM code and apply the `20261015_website_lead_sync` migration.
-5. Immediately before enabling the CRM sync, note the largest numeric ID already in column A of **Website Cms**. Set that value as `WEBSITE_SHEET_START_AFTER_ID`; only larger IDs will import. As checked on 15 October 2026, the largest existing ID was **42**. Recheck it at activation because new enquiries may arrive meanwhile.
+5. Set `WEBSITE_SHEET_START_AFTER_ID` to the last lead ID that should remain historical; only larger IDs will import. Do not use the current maximum if new leads have already arrived. On 16 October 2026, ID **39** was the last historical row, and new website enquiries had IDs **40**, **41**, and **42**. Set the cutoff to **39** to import those three. Check the sheet again before changing this value if later rows have arrived.
 6. Set these CRM API environment variables through an HTTPS Coolify dashboard or encrypted SSH session:
 
    - `WEBSITE_SHEET_WEBHOOK_URL=` the existing HTTPS Apps Script web-app URL

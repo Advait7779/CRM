@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { processWebsiteSheetLeads, sheetConfig, isConfigured } = require('../services/websiteSheetSync');
+const { processWebsiteSheetLeads, sheetConfig, isConfigured, configurationIssues } = require('../services/websiteSheetSync');
 
 const env = {
   WEBSITE_SHEET_WEBHOOK_URL: 'https://script.google.com/macros/s/test-deployment/exec',
@@ -28,6 +28,19 @@ test('sheet sync requires a starting ID and a secure Apps Script read secret', (
   assert.equal(isConfigured(sheetConfig({ ...env, WEBSITE_SHEET_READ_SECRET: '' })), false);
   assert.equal(isConfigured(sheetConfig({ ...env, WEBSITE_SHEET_WEBHOOK_URL: 'http://script.google.com/macros/s/test/exec' })), false);
   assert.equal(isConfigured(sheetConfig(env)), true);
+});
+
+test('disabled sync identifies invalid settings without logging their values', () => {
+  const issues = configurationIssues(sheetConfig({
+    WEBSITE_SHEET_WEBHOOK_URL: 'https://example.com/private-webhook',
+    WEBSITE_SHEET_READ_SECRET: 'short-private-secret',
+    WEBSITE_SHEET_START_AFTER_ID: 'not-an-id'
+  }));
+  assert.equal(issues.length, 3);
+  assert.match(issues.join(' '), /WEBSITE_SHEET_WEBHOOK_URL/);
+  assert.match(issues.join(' '), /WEBSITE_SHEET_READ_SECRET/);
+  assert.match(issues.join(' '), /WEBSITE_SHEET_START_AFTER_ID/);
+  assert.doesNotMatch(issues.join(' '), /private-webhook|private-secret/);
 });
 
 test('sheet sync imports only IDs after activation and keeps CRM status on repeat scans', async () => {
