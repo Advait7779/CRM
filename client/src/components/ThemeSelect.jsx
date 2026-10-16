@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 
-export default function ThemeSelect({ value, onChange, children, className = "", style = {} }) {
+export default function ThemeSelect({ value, onChange, children, disabled = false, className = "", style = {} }) {
   const [isOpen, setIsOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, openUpward: false })
   const buttonRef = useRef(null)
@@ -22,6 +22,10 @@ export default function ThemeSelect({ value, onChange, children, className = "",
       })
     }
   }
+
+  useEffect(() => {
+    if (disabled) setIsOpen(false)
+  }, [disabled])
 
   useEffect(() => {
     if (isOpen) {
@@ -56,17 +60,19 @@ export default function ThemeSelect({ value, onChange, children, className = "",
     .filter(child => child && child.type === 'option')
     .map(child => ({
       value: child.props.value !== undefined ? child.props.value : child.props.children,
-      label: child.props.children
+      label: child.props.children,
+      disabled: Boolean(child.props.disabled)
     }))
 
   const selectedOption = options.find(o => String(o.value) === String(value)) || options[0]
 
-  const handleSelect = (optValue) => {
+  const handleSelect = (option) => {
+    if (disabled || option.disabled) return
     setIsOpen(false)
     if (onChange) {
       onChange({
         target: {
-          value: optValue
+          value: option.value
         }
       })
     }
@@ -116,13 +122,15 @@ export default function ThemeSelect({ value, onChange, children, className = "",
       <button
         ref={buttonRef}
         type="button"
+        disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
         className={`input-field ${className}`}
         style={{
           display: 'flex',
           alignItems: 'center',
           justify: 'space-between',
-          cursor: 'pointer',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.6 : 1,
           textAlign: 'left',
           paddingTop: '0px',
           paddingBottom: '0px',
@@ -184,26 +192,28 @@ export default function ThemeSelect({ value, onChange, children, className = "",
               <button
                 key={`${opt.value}-${index}`}
                 type="button"
-                onClick={() => handleSelect(opt.value)}
+                disabled={opt.disabled}
+                onClick={() => handleSelect(opt)}
                 style={{
                   width: '100%',
                   textAlign: 'left',
                   padding: '8px 12px',
                   background: isSelected ? 'var(--accent-primary)' : 'transparent',
-                  color: isSelected ? '#ffffff' : 'var(--text-primary)',
+                  color: opt.disabled ? 'var(--text-muted)' : isSelected ? '#ffffff' : 'var(--text-primary)',
                   border: 'none',
                   fontSize: '12px',
-                  cursor: 'pointer',
+                  cursor: opt.disabled ? 'not-allowed' : 'pointer',
+                  opacity: opt.disabled ? 0.55 : 1,
                   transition: 'background 0.15s, color 0.15s',
                   display: 'block',
                   whiteSpace: 'nowrap',
                   fontWeight: isSelected ? 600 : 400
                 }}
                 onMouseEnter={(e) => {
-                  if (!isSelected) e.target.style.background = 'var(--bg-secondary)'
+                  if (!isSelected && !opt.disabled) e.target.style.background = 'var(--bg-secondary)'
                 }}
                 onMouseLeave={(e) => {
-                  if (!isSelected) e.target.style.background = 'transparent'
+                  if (!isSelected && !opt.disabled) e.target.style.background = 'transparent'
                 }}
               >
                 {opt.label}

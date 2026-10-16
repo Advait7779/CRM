@@ -477,11 +477,11 @@ export default function CustomersPage() {
               <div className="form-grid-2" style={{ marginBottom: 20 }}>
                 <div className="form-group">
                   <label className="form-label">Contact Birthday</label>
-                  <ThemeDatePicker value={form.birthday} onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))} />
+                  <ThemeDatePicker value={form.birthday} minYear={1900} onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Contact Anniversary</label>
-                  <ThemeDatePicker value={form.anniversary} onChange={e => setForm(f => ({ ...f, anniversary: e.target.value }))} />
+                  <ThemeDatePicker value={form.anniversary} minYear={1900} onChange={e => setForm(f => ({ ...f, anniversary: e.target.value }))} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Renewal Date</label>
@@ -537,17 +537,17 @@ export default function CustomersPage() {
             <div className="form-grid-2" style={{ marginBottom: 18 }}>
               <div className="form-group">
                 <label className="form-label">Occasion</label>
-                <select className="input-field" value={greetingOccasion} disabled={greetingSending} onChange={e => setGreetingOccasion(e.target.value)}>
+                <ThemeSelect value={greetingOccasion} disabled={greetingSending} onChange={e => setGreetingOccasion(e.target.value)}>
                   <option value="birthday" disabled={!greetingCustomer.birthday}>Birthday</option>
                   <option value="anniversary" disabled={!greetingCustomer.anniversary}>Anniversary</option>
-                </select>
+                </ThemeSelect>
               </div>
               <div className="form-group">
                 <label className="form-label">Channel</label>
-                <select className="input-field" value={greetingChannel} disabled={greetingSending} onChange={e => setGreetingChannel(e.target.value)}>
+                <ThemeSelect value={greetingChannel} disabled={greetingSending} onChange={e => setGreetingChannel(e.target.value)}>
                   <option value="sms">SMS</option>
                   <option value="voice">Voice Call</option>
-                </select>
+                </ThemeSelect>
               </div>
             </div>
             {greetingLoading && <p style={{ color: 'var(--text-secondary)' }}>Loading preview...</p>}

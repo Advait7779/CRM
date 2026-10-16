@@ -16,13 +16,18 @@ export default function ThemeDatePicker({
   placeholder = 'Select date',
   min,
   max,
+  minYear,
+  maxYear,
   style = {},
   className = 'input-field'
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [showYearPicker, setShowYearPicker] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0, openUpward: false })
   const inputRef = useRef(null)
   const portalRef = useRef(null)
+  const yearListRef = useRef(null)
+  const selectedYearRef = useRef(null)
   const isDateAllowed = (date) => (!min || date >= min) && (!max || date <= max)
 
   // Parse current selected date or fallback to today
@@ -66,6 +71,11 @@ export default function ThemeDatePicker({
   }, [isOpen])
 
   useEffect(() => {
+    if (!showYearPicker || !yearListRef.current || !selectedYearRef.current) return
+    yearListRef.current.scrollTop = selectedYearRef.current.offsetTop - yearListRef.current.clientHeight / 2
+  }, [showYearPicker])
+
+  useEffect(() => {
     const handleClickOutside = (e) => {
       if (
         inputRef.current && !inputRef.current.contains(e.target) &&
@@ -91,6 +101,7 @@ export default function ThemeDatePicker({
       onChange({ target: { value: formatted, name: inputRef.current?.name } })
     }
     setIsOpen(false)
+    setShowYearPicker(false)
   }
 
   const handleClear = (e) => {
@@ -99,6 +110,7 @@ export default function ThemeDatePicker({
       onChange({ target: { value: '', name: inputRef.current?.name } })
     }
     setIsOpen(false)
+    setShowYearPicker(false)
   }
 
   const handleSelectToday = () => {
@@ -113,15 +125,16 @@ export default function ThemeDatePicker({
       onChange({ target: { value: formatted, name: inputRef.current?.name } })
     }
     setIsOpen(false)
+    setShowYearPicker(false)
   }
 
   const changeMonth = (delta) => {
     setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
   }
 
-  const changeYear = (e) => {
-    const newYear = parseInt(e.target.value, 10)
+  const changeYear = (newYear) => {
     setViewDate(prev => new Date(newYear, prev.getMonth(), 1))
+    setShowYearPicker(false)
   }
 
   // Format display string DD-MM-YYYY
@@ -158,14 +171,16 @@ export default function ThemeDatePicker({
     gridCells.push({ day: i, isCurrentMonth: false })
   }
 
-  // Years option list (current year +- 10)
+  // The default range keeps existing date pickers compact. Occasion dates can opt into older years.
   const currentYr = new Date().getFullYear()
-  const years = Array.from({ length: 21 }, (_, index) => currentYr - 10 + index)
+  const firstYear = Math.min(minYear ?? currentYr - 10, year)
+  const lastYear = Math.max(maxYear ?? currentYr + 10, year)
+  const years = Array.from({ length: lastYear - firstYear + 1 }, (_, index) => lastYear - index)
 
   return (
     <div ref={inputRef} style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
       <div
-        onClick={() => setIsOpen(open => !open)}
+        onClick={() => { setIsOpen(open => !open); setShowYearPicker(false) }}
         className={className}
         style={{
           display: 'flex',
@@ -221,22 +236,11 @@ export default function ThemeDatePicker({
               <span style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
                 {MONTH_NAMES[month]}
               </span>
-              <select
-                value={year}
-                onChange={changeYear}
-                style={{
-                  border: 'none',
-                  background: '#f1f5f9',
-                  borderRadius: 6,
-                  padding: '2px 4px',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#475569',
-                  cursor: 'pointer'
-                }}
-              >
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
+              <button type="button" onClick={() => setShowYearPicker(open => !open)}
+                aria-label="Choose year" aria-expanded={showYearPicker}
+                style={{ border: 'none', background: '#f1f5f9', borderRadius: 6, padding: '3px 8px', fontSize: 12, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
+                {year} ▾
+              </button>
             </div>
             <button
               type="button"
@@ -247,6 +251,18 @@ export default function ThemeDatePicker({
             </button>
           </div>
 
+          {showYearPicker ? (
+            <div ref={yearListRef} role="listbox" aria-label="Choose year"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, maxHeight: 224, minHeight: 224, overflowY: 'auto', position: 'relative' }}>
+              {years.map(optionYear => (
+                <button key={optionYear} ref={optionYear === year ? selectedYearRef : null} type="button" role="option"
+                  aria-selected={optionYear === year} onClick={() => changeYear(optionYear)}
+                  style={{ border: 'none', borderRadius: 8, padding: '8px 0', background: optionYear === year ? '#6366f1' : '#f1f5f9', color: optionYear === year ? '#fff' : '#334155', fontSize: 12, fontWeight: optionYear === year ? 700 : 500, cursor: 'pointer' }}>
+                  {optionYear}
+                </button>
+              ))}
+            </div>
+          ) : <>
           {/* Weekday headers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', marginBottom: 6 }}>
             {DAY_NAMES.map(day => (
@@ -315,6 +331,7 @@ export default function ThemeDatePicker({
               Today
             </button>
           </div>
+          </>}
         </div>,
         document.body
       )}
