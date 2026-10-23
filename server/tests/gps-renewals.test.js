@@ -69,3 +69,28 @@ test('re-import matches one existing record per source row and keeps repeated re
   assert.equal(plan.create.length, 3);
   assert.deepEqual(plan.create.map(row => row.simNumber), ['SIM2', 'SIM3', 'SIM4']);
 });
+
+test('GPS renewal normalization preserves follow-up date and remarks', () => {
+  const parsed = normalizeGpsRenewal({
+    customer: 'Test Customer',
+    contactNo: '9876543210',
+    imeiNo: '123456789012345',
+    vehicleNumber: 'MH 01 AB 1234',
+    nextDue: '2026-10-31',
+    followUpDate: '2026-10-25',
+    remarks: 'Customer asked to renew in 2-3 days'
+  });
+  assert.equal(parsed.followUpDate, '2026-10-25');
+  assert.equal(parsed.remarks, 'Customer asked to renew in 2-3 days');
+
+  assert.throws(
+    () => normalizeGpsRenewal({
+      customer: 'Test',
+      imeiNo: '123',
+      vehicleNumber: 'V1',
+      nextDue: '2026-10-31',
+      followUpDate: 'not-a-date'
+    }),
+    /Follow-up date must be a valid date/
+  );
+});

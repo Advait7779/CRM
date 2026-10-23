@@ -677,14 +677,18 @@ function gpsData(input) {
     simNumber: row.simNumber,
     vehicleNumber: row.vehicleNumber,
     nextDue: toDateOnly(row.nextDue),
-    renewalDate: row.renewalDate ? toDateOnly(row.renewalDate) : null
+    renewalDate: row.renewalDate ? toDateOnly(row.renewalDate) : null,
+    followUpDate: row.followUpDate ? toDateOnly(row.followUpDate) : null,
+    remarks: row.remarks || null
   };
 }
 
 function gpsRecordResponse(record) {
   return renewalWithComputedStatus({
     ...record,
-    contactNo: record.contactNo || record.Customers?.phone || ''
+    contactNo: record.contactNo || record.Customers?.phone || '',
+    followUpDate: record.followUpDate ? toDateOnly(record.followUpDate) : null,
+    remarks: record.remarks || ''
   });
 }
 

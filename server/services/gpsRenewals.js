@@ -47,8 +47,11 @@ function normalizeGpsRenewal(input) {
   }
   fields.nextDue = dateOnly(input.nextDue);
   fields.renewalDate = input.renewalDate == null || input.renewalDate === '' ? '' : dateOnly(input.renewalDate);
+  fields.followUpDate = input.followUpDate == null || input.followUpDate === '' ? '' : dateOnly(input.followUpDate);
+  fields.remarks = input.remarks == null ? '' : String(input.remarks).trim().slice(0, 500);
   if (!fields.nextDue) throw new Error('Expiry date must be a valid date.');
   if (input.renewalDate != null && input.renewalDate !== '' && !fields.renewalDate) throw new Error('Renewal date must be a valid date.');
+  if (input.followUpDate != null && input.followUpDate !== '' && !fields.followUpDate) throw new Error('Follow-up date must be a valid date.');
   return fields;
 }
 

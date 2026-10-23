@@ -346,6 +346,8 @@ model Renewals {
   lastDate  DateTime? @db.Date
   nextDue   DateTime  @db.Date
   renewalDate DateTime? @db.Date
+  followUpDate DateTime? @db.Date
+  remarks    String?   @db.VarChar(500)
   confirmedAt DateTime? @db.Timestamptz(6)
   amount     Decimal   @db.Decimal(14, 2)
   daysLeft  Int?
@@ -358,6 +360,7 @@ model Renewals {
   @@index([nextDue], map: "renewals_next_due")
   @@index([imeiNo, nextDue], map: "renewals_imei_expiry")
   @@index([status], map: "renewals_status")
+  @@index([followUpDate], map: "renewals_follow_up_date")
 }
 
 model Tasks {
