@@ -76,11 +76,12 @@ export async function apiPut(path, body) {
   return handleResponse(res)
 }
 
-export async function apiDelete(path) {
+export async function apiDelete(path, body) {
   const res = await fetch(`${BASE}${path}`, {
     method: 'DELETE',
     headers: authHeaders(),
-    credentials: 'include'
+    credentials: 'include',
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {})
   })
   return handleResponse(res)
 }

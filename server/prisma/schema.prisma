@@ -340,6 +340,7 @@ model Renewals {
   customer   String    @db.VarChar(255)
   contactNo  String?   @db.VarChar(40)
   imeiNo     String?   @db.VarChar(80)
+  simNumber  String?   @db.VarChar(80)
   vehicleNumber String? @db.VarChar(80)
   type      String    @db.VarChar(255)
   lastDate  DateTime? @db.Date
