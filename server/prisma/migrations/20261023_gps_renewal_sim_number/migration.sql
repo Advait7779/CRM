@@ -1,0 +1,1 @@
+ALTER TABLE "Renewals" ADD COLUMN "simNumber" VARCHAR(80);

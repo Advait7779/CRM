@@ -16,7 +16,7 @@ const { isGroupMember, groupAccessWhere } = require('../utils/accessPolicy');
 const { JUSTDIAL_PRODUCTS, ASSIGNABLE_PRODUCTS, classifyJustdialCategory, validProductSelection, leadAccessWhere, canAccessLead } = require('../services/justdialProducts');
 const { LEAD_GROUPS, filterLeads, buildLeadsWorkbook } = require('../utils/leadWorkbook');
 const ExcelJS = require('exceljs');
-const { HEADERS: GPS_HEADERS, normalizeGpsRenewal, renewalKey, parseGpsWorkbook } = require('../services/gpsRenewals');
+const { HEADERS: GPS_HEADERS, normalizeGpsRenewal, planGpsImport, parseGpsWorkbook } = require('../services/gpsRenewals');
 
 const router = express.Router();
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -370,11 +370,12 @@ function renewalWithComputedStatus(record) {
   };
 }
 
-async function serializableTransaction(work, retries = 3) {
+async function serializableTransaction(work, retries = 3, timeout = 5000) {
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
       return await prisma.$transaction(work, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        timeout
       });
     } catch (error) {
       if (error.code !== 'P2034' || attempt === retries) throw error;
@@ -673,18 +674,10 @@ function gpsData(input) {
     customer: row.customer,
     contactNo: row.contactNo,
     imeiNo: row.imeiNo,
+    simNumber: row.simNumber,
     vehicleNumber: row.vehicleNumber,
     nextDue: toDateOnly(row.nextDue),
     renewalDate: row.renewalDate ? toDateOnly(row.renewalDate) : null
-  };
-}
-
-function gpsDuplicateWhere(row, exceptId) {
-  return {
-    type: 'GPS Renewal',
-    imeiNo: { equals: row.imeiNo, mode: 'insensitive' },
-    nextDue: row.nextDue,
-    ...(exceptId ? { id: { not: exceptId } } : {})
   };
 }
 
@@ -707,9 +700,6 @@ router.get('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE]), a
 
 router.post('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE]), asyncHandler(async (req, res) => {
   const row = gpsData(req.body);
-  if (await prisma.renewals.findFirst({ where: gpsDuplicateWhere(row), select: { id: true } })) {
-    return res.status(409).json({ message: 'This IMEI already has a GPS renewal with the same expiry date.' });
-  }
   const record = await prisma.renewals.create({
     data: prepareData('renewals', { ...row, type: 'GPS Renewal', amount: 0, status: 'Active' }, { create: true })
   });
@@ -723,12 +713,31 @@ router.put('/gps-renewals/:id', authMiddleware, checkRole([...SALES, ...FINANCE]
   const existing = await prisma.renewals.findUnique({ where: { id } });
   if (!existing || !existing.type.toLowerCase().startsWith('gps')) return res.status(404).json({ message: 'GPS renewal not found.' });
   const row = gpsData(req.body);
-  if (await prisma.renewals.findFirst({ where: gpsDuplicateWhere(row, id), select: { id: true } })) {
-    return res.status(409).json({ message: 'This IMEI already has a GPS renewal with the same expiry date.' });
-  }
   const record = await prisma.renewals.update({ where: { id }, data: prepareData('renewals', row) });
   await audit(req, 'update', 'gps-renewal', id, { fields: Object.keys(row) });
   res.json(gpsRecordResponse(record));
+}));
+
+router.delete('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE]), asyncHandler(async (req, res) => {
+  let ids = null;
+  if (Array.isArray(req.body?.ids)) {
+    ids = req.body.ids.map(Number).filter(Number.isSafeInteger);
+  } else if (typeof req.query.ids === 'string' && req.query.ids.trim()) {
+    ids = req.query.ids.split(',').map(Number).filter(Number.isSafeInteger);
+  }
+
+  if (Array.isArray(req.body?.ids) && req.body.ids.length === 0) {
+    return res.json({ message: 'No GPS renewals specified for deletion.', count: 0 });
+  }
+
+  const where = {
+    type: { startsWith: 'GPS', mode: 'insensitive' },
+    ...(ids && ids.length > 0 ? { id: { in: ids } } : {})
+  };
+
+  const result = await prisma.renewals.deleteMany({ where });
+  await audit(req, 'delete-all', 'gps-renewal', null, { count: result.count, ids: ids || 'all' });
+  res.json({ message: `Successfully deleted ${result.count} GPS renewal(s).`, count: result.count });
 }));
 
 router.delete('/gps-renewals/:id', authMiddleware, checkRole([...SALES, ...FINANCE]), asyncHandler(async (req, res) => {
@@ -760,16 +769,29 @@ router.get('/gps-renewals/template.xlsx', authMiddleware, checkRole([...SALES, .
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('GPS Renewals');
   sheet.addRow(GPS_HEADERS);
-  sheet.columns = [{ width: 28 }, { width: 18 }, { width: 23 }, { width: 22 }, { width: 18 }, { width: 18 }];
+  sheet.columns = [{ width: 28 }, { width: 18 }, { width: 23 }, { width: 22 }, { width: 18 }, { width: 18 }, { width: 23 }];
   sheet.getRow(1).font = { bold: true };
   sheet.getColumn(2).numFmt = '@';
   sheet.getColumn(3).numFmt = '@';
   sheet.getColumn(4).numFmt = '@';
+  sheet.getColumn(7).numFmt = '@';
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', 'attachment; filename="gps-renewals-template.xlsx"');
   res.setHeader('Cache-Control', 'no-store');
   res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
 }));
+
+async function gpsExistingForRows(delegate, rows) {
+  if (!rows.length) return [];
+  return delegate.findMany({
+    where: {
+      type: 'GPS Renewal',
+      imeiNo: { in: [...new Set(rows.map(row => row.imeiNo))], mode: 'insensitive' },
+      nextDue: { in: [...new Set(rows.map(row => row.nextDue))].map(toDateOnly) }
+    },
+    select: { id: true, customer: true, contactNo: true, imeiNo: true, simNumber: true, vehicleNumber: true, nextDue: true }
+  });
+}
 
 async function inspectGpsImport(req) {
   if (!req.file || !req.file.originalname.toLowerCase().endsWith('.xlsx')) {
@@ -778,16 +800,8 @@ async function inspectGpsImport(req) {
   let parsed;
   try { parsed = await parseGpsWorkbook(req.file.buffer); }
   catch (error) { error.status = 400; throw error; }
-  const imeis = [...new Set(parsed.rows.map(row => row.imeiNo))];
-  const dates = [...new Set(parsed.rows.map(row => row.nextDue))].map(toDateOnly);
-  const existing = parsed.rows.length ? await prisma.renewals.findMany({
-    where: { type: 'GPS Renewal', imeiNo: { in: imeis, mode: 'insensitive' }, nextDue: { in: dates } },
-    select: { imeiNo: true, nextDue: true }
-  }) : [];
-  const keys = new Set(existing.map(renewalKey));
-  const duplicateRows = parsed.rows.filter(row => keys.has(renewalKey(row))).map(row => row.rowNumber);
-  const importable = parsed.rows.filter(row => !keys.has(renewalKey(row)));
-  return { ...parsed, duplicateRows, importable };
+  const plan = planGpsImport(parsed.rows, await gpsExistingForRows(prisma.renewals, parsed.rows));
+  return { ...parsed, duplicateRows: plan.matched.map(({ row }) => row.rowNumber), importable: plan.create };
 }
 
 router.post('/gps-renewals/import/preview', authMiddleware, checkRole([...SALES, ...FINANCE]), gpsWorkbookUpload, asyncHandler(async (req, res) => {
@@ -797,24 +811,28 @@ router.post('/gps-renewals/import/preview', authMiddleware, checkRole([...SALES,
 
 router.post('/gps-renewals/import', authMiddleware, checkRole([...SALES, ...FINANCE]), gpsWorkbookUpload, asyncHandler(async (req, res) => {
   const preview = await inspectGpsImport(req);
-  if (preview.errors.length) return res.status(400).json({ message: 'Fix invalid or duplicate rows in the file before importing.' });
+  if (preview.errors.length) {
+    const details = preview.errors.slice(0, 3).map(error => `row ${error.rowNumber}: ${error.message}`).join('; ');
+    return res.status(400).json({ message: `Excel file has ${preview.errors.length} invalid row(s): ${details}${preview.errors.length > 3 ? '; and more' : ''}` });
+  }
   const result = await serializableTransaction(async (tx) => {
-    const existing = await tx.renewals.findMany({
-      where: {
-        type: 'GPS Renewal',
-        imeiNo: { in: [...new Set(preview.rows.map(row => row.imeiNo))], mode: 'insensitive' },
-        nextDue: { in: [...new Set(preview.rows.map(row => row.nextDue))].map(toDateOnly) }
-      },
-      select: { imeiNo: true, nextDue: true }
+    const plan = planGpsImport(preview.rows, await gpsExistingForRows(tx.renewals, preview.rows));
+    if (plan.create.length) await tx.renewals.createMany({
+      data: plan.create.map(source => prepareData('renewals', { ...gpsData(source), type: 'GPS Renewal', amount: 0, status: 'Active' }, { create: true }))
     });
-    const keys = new Set(existing.map(renewalKey));
-    const rows = preview.rows.filter(row => !keys.has(renewalKey(row)));
-    if (rows.length) await tx.renewals.createMany({
-      data: rows.map(source => prepareData('renewals', { ...gpsData(source), type: 'GPS Renewal', amount: 0, status: 'Active' }, { create: true }))
-    });
-    return { imported: rows.length, skipped: preview.rows.length - rows.length };
-  });
-  await audit(req, 'import', 'gps-renewal', null, { count: result.imported, skipped: result.skipped });
+    const updates = plan.matched.filter(({ row, record }) => row.simNumber && row.simNumber !== (record.simNumber || ''));
+    for (const { row, record } of updates) {
+      await tx.renewals.update({ where: { id: record.id }, data: prepareData('renewals', { simNumber: row.simNumber }) });
+    }
+    return {
+      imported: plan.create.length,
+      updated: updates.length,
+      skipped: plan.matched.length - updates.length,
+      warnings: preview.warnings,
+      missingContactCount: plan.create.filter(row => !row.contactNo).length
+    };
+  }, 3, 120000);
+  await audit(req, 'import', 'gps-renewal', null, { count: result.imported, updated: result.updated, skipped: result.skipped });
   res.json(result);
 }));
 

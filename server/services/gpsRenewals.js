@@ -1,7 +1,7 @@
 const ExcelJS = require('exceljs');
 
-const HEADERS = ['Customer name', 'Contact No', 'IMEI No', 'Vehicle Number', 'Expiry date', 'Renewal date'];
-const KEYS = ['customer', 'contactNo', 'imeiNo', 'vehicleNumber', 'nextDue', 'renewalDate'];
+const HEADERS = ['Customer name', 'Contact No', 'IMEI No', 'Vehicle Number', 'Expiry date', 'Renewal date', 'SIM Number'];
+const KEYS = ['customer', 'contactNo', 'imeiNo', 'vehicleNumber', 'nextDue', 'renewalDate', 'simNumber'];
 const MAX_ROWS = 2000;
 
 function dateOnly(value) {
@@ -36,13 +36,13 @@ function cellValue(cell) {
 
 function normalizeGpsRenewal(input) {
   const fields = {};
-  const limits = { customer: 255, contactNo: 40, imeiNo: 80, vehicleNumber: 80 };
+  const limits = { customer: 255, contactNo: 40, imeiNo: 80, simNumber: 80, vehicleNumber: 80 };
   for (const [key, max] of Object.entries(limits)) {
     const value = input[key];
     if (typeof value === 'number' && !Number.isSafeInteger(value)) throw new Error(`${HEADERS[KEYS.indexOf(key)]} is too large as a number. Format that Excel column as Text.`);
     fields[key] = String(value ?? '').trim();
     if (['--', '-', 'N/A', 'NA'].includes(fields[key].toUpperCase())) fields[key] = '';
-    if (!fields[key] && key !== 'contactNo') throw new Error(`${HEADERS[KEYS.indexOf(key)]} is required.`);
+    if (!fields[key] && !['contactNo', 'simNumber'].includes(key)) throw new Error(`${HEADERS[KEYS.indexOf(key)]} is required.`);
     if (fields[key].length > max) throw new Error(`${HEADERS[KEYS.indexOf(key)]} is too long.`);
   }
   fields.nextDue = dateOnly(input.nextDue);
@@ -54,6 +54,37 @@ function normalizeGpsRenewal(input) {
 
 function renewalKey(row) {
   return `${String(row.imeiNo).trim().toLowerCase()}|${dateOnly(row.nextDue)}`;
+}
+
+function planGpsImport(rows, existing) {
+  const comparable = value => {
+    const text = String(value || '').trim().toLowerCase();
+    return ['not provided', '--', '-', 'n/a', 'na'].includes(text) ? '' : text;
+  };
+  const available = new Map();
+  for (const record of [...existing].sort((a, b) => a.id - b.id)) {
+    const key = renewalKey(record);
+    if (!available.has(key)) available.set(key, []);
+    available.get(key).push(record);
+  }
+  const matched = [];
+  const create = [];
+  for (const row of rows) {
+    const candidates = available.get(renewalKey(row)) || [];
+    if (!candidates.length) { create.push(row); continue; }
+    const sameCustomerVehicle = record => comparable(record.customer) === comparable(row.customer)
+      && comparable(record.vehicleNumber) === comparable(row.vehicleNumber);
+    let matchIndex = candidates.findIndex(record => sameCustomerVehicle(record)
+      && comparable(record.contactNo) === comparable(row.contactNo)
+      && comparable(record.simNumber) === comparable(row.simNumber));
+    if (matchIndex < 0) matchIndex = candidates.findIndex(record => sameCustomerVehicle(record)
+      && comparable(record.contactNo) === comparable(row.contactNo));
+    if (matchIndex < 0) matchIndex = candidates.findIndex(sameCustomerVehicle);
+    if (matchIndex < 0) { create.push(row); continue; }
+    const [record] = candidates.splice(matchIndex, 1);
+    matched.push({ row, record });
+  }
+  return { matched, create };
 }
 
 function headerText(cell) {
@@ -71,12 +102,15 @@ function workbookColumns(sheet) {
       return null;
     };
     const ordinary = Object.fromEntries(KEYS.map((key, index) => [key, find(HEADERS[index].toLowerCase().replace(/[^a-z0-9]/g, ''))]));
-    if (KEYS.every(key => ordinary[key])) return { rowNumber, columns: ordinary, sourceFormat: 'GPS renewal template' };
+    if (KEYS.filter(key => key !== 'simNumber').every(key => ordinary[key])) {
+      return { rowNumber, columns: ordinary, sourceFormat: 'GPS renewal template' };
+    }
 
     const report = {
       customer: find('name', 'company'),
       contactNo: find('contactno', 'company'),
       imeiNo: find('imei'),
+      simNumber: find('simnumber'),
       vehicleNumber: find('object'),
       nextDue: find('companyexpirydate'),
       renewalDate: null
@@ -85,7 +119,7 @@ function workbookColumns(sheet) {
       return { rowNumber, columns: report, sourceFormat: 'Object Expiry Log' };
     }
   }
-  throw new Error(`Could not find the GPS renewal columns. Use the downloaded template or an Object Expiry Log with Company Name, Company Contact No., Object, IMEI and Company Expiry Date.`);
+  throw new Error('Could not find GPS renewal columns. Select an Object Expiry Log with Company Name, Object, IMEI, SIM Number and Company Expiry Date, or a GPS renewal workbook.');
 }
 
 async function parseGpsWorkbook(buffer) {
@@ -97,21 +131,19 @@ async function parseGpsWorkbook(buffer) {
   const rows = [];
   const errors = [];
   const warnings = [];
-  const seen = new Set();
   if (sheet.rowCount - headerRow > MAX_ROWS) throw new Error(`Import at most ${MAX_ROWS} rows at a time.`);
   for (let index = headerRow + 1; index <= sheet.rowCount; index += 1) {
     const excelRow = sheet.getRow(index);
     const values = KEYS.map(key => columns[key] ? cellValue(excelRow.getCell(columns[key])) : '');
     if (values.every(value => value == null || String(value).trim() === '')) continue;
-    if (typeof values[2] === 'number' && !Number.isSafeInteger(values[2])) {
-      values[2] = excelRow.getCell(columns.imeiNo).text || String(values[2]);
-      warnings.push({ rowNumber: index, message: 'IMEI is stored as a large Excel number; check its displayed digits because Excel may have rounded it.' });
+    for (const [key, position, label] of [['imeiNo', 2, 'IMEI'], ['simNumber', 6, 'SIM Number']]) {
+      if (typeof values[position] === 'number' && !Number.isSafeInteger(values[position])) {
+        values[position] = excelRow.getCell(columns[key]).text || String(values[position]);
+        warnings.push({ rowNumber: index, message: `${label} is stored as a large Excel number; check its displayed digits because Excel may have rounded it.` });
+      }
     }
     try {
       const row = normalizeGpsRenewal(Object.fromEntries(KEYS.map((key, column) => [key, values[column]])));
-      const key = renewalKey(row);
-      if (seen.has(key)) throw new Error('Duplicate IMEI and expiry date in this file.');
-      seen.add(key);
       rows.push({ rowNumber: index, ...row });
     } catch (error) { errors.push({ rowNumber: index, message: error.message }); }
   }
@@ -119,4 +151,4 @@ async function parseGpsWorkbook(buffer) {
   return { rows, errors, warnings, sourceFormat };
 }
 
-module.exports = { HEADERS, dateOnly, normalizeGpsRenewal, renewalKey, parseGpsWorkbook };
+module.exports = { HEADERS, dateOnly, normalizeGpsRenewal, renewalKey, planGpsImport, parseGpsWorkbook };

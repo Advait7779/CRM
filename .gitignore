@@ -43,3 +43,6 @@ server/uploads/
 
 # Local database backups
 backups/
+
+# Local outputs
+outputs/
