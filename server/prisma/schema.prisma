@@ -338,9 +338,14 @@ model Renewals {
   id         Int       @id @default(autoincrement())
   customerId Int?
   customer   String    @db.VarChar(255)
+  contactNo  String?   @db.VarChar(40)
+  imeiNo     String?   @db.VarChar(80)
+  vehicleNumber String? @db.VarChar(80)
   type      String    @db.VarChar(255)
   lastDate  DateTime? @db.Date
   nextDue   DateTime  @db.Date
+  renewalDate DateTime? @db.Date
+  confirmedAt DateTime? @db.Timestamptz(6)
   amount     Decimal   @db.Decimal(14, 2)
   daysLeft  Int?
   status    String?   @default("Active") @db.VarChar(255)
@@ -350,6 +355,7 @@ model Renewals {
 
   @@index([customerId], map: "renewals_customer_id")
   @@index([nextDue], map: "renewals_next_due")
+  @@index([imeiNo, nextDue], map: "renewals_imei_expiry")
   @@index([status], map: "renewals_status")
 }
 
