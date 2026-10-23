@@ -27,7 +27,27 @@ test('GPS workbook preserves phone and IMEI text, reads Excel dates, and flags d
 });
 
 test('GPS workbook rejects changed headers and manual rows require five valid fields', async () => {
-  await assert.rejects(parseGpsWorkbook(await workbookBuffer([], ['Name', ...HEADERS.slice(1)])), /first row/);
+  await assert.rejects(parseGpsWorkbook(await workbookBuffer([], ['Name', ...HEADERS.slice(1)])), /Could not find/);
   assert.throws(() => normalizeGpsRenewal({ customer: 'A', contactNo: '1', imeiNo: '2', vehicleNumber: 'X', nextDue: '31/02/2027' }), /Expiry date/);
+  assert.equal(normalizeGpsRenewal({ customer: 'A', contactNo: '--', imeiNo: '2', vehicleNumber: 'X', nextDue: '2027-02-28' }).contactNo, '');
   assert.equal(dateOnly(45000), '2023-03-15');
+});
+
+test('Object Expiry Log reads only Company, Object, IMEI and expiry fields from a wide two-row header', async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Object Expiry Log');
+  sheet.getRow(5).getCell(6).value = 'Company';
+  sheet.getRow(5).getCell(7).value = 'Company';
+  for (const [column, heading] of [[1, 'Name'], [2, 'Contact No.'], [6, 'Name'], [7, 'Contact No.'], [11, 'Object'], [12, 'IMEI'], [17, 'Company Expiry Date'], [18, 'Created Date']]) sheet.getRow(6).getCell(column).value = heading;
+  for (const [column, value] of [[1, 'Reseller name'], [2, '9999999999'], [6, 'Customer name'], [7, '--'], [11, 'MH 01 AB 1234'], [12, 1234567890123456700], [17, '23-09-2026'], [18, '23-09-2025']]) sheet.getRow(7).getCell(column).value = value;
+  const parsed = await parseGpsWorkbook(Buffer.from(await workbook.xlsx.writeBuffer()));
+  assert.equal(parsed.sourceFormat, 'Object Expiry Log');
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.errors.length, 0);
+  assert.equal(parsed.warnings.length, 1);
+  assert.equal(parsed.rows[0].customer, 'Customer name');
+  assert.equal(parsed.rows[0].contactNo, '');
+  assert.equal(parsed.rows[0].vehicleNumber, 'MH 01 AB 1234');
+  assert.equal(parsed.rows[0].nextDue, '2026-09-23');
+  assert.equal(parsed.rows[0].renewalDate, '');
 });

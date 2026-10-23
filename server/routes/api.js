@@ -791,8 +791,8 @@ async function inspectGpsImport(req) {
 }
 
 router.post('/gps-renewals/import/preview', authMiddleware, checkRole([...SALES, ...FINANCE]), gpsWorkbookUpload, asyncHandler(async (req, res) => {
-  const { rows, errors, duplicateRows, importable } = await inspectGpsImport(req);
-  res.json({ rows, errors, duplicateRows, importableCount: importable.length });
+  const { rows, errors, warnings, sourceFormat, duplicateRows, importable } = await inspectGpsImport(req);
+  res.json({ rows, errors, warnings, sourceFormat, duplicateRows, importableCount: importable.length });
 }));
 
 router.post('/gps-renewals/import', authMiddleware, checkRole([...SALES, ...FINANCE]), gpsWorkbookUpload, asyncHandler(async (req, res) => {
