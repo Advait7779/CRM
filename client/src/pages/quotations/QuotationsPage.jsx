@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect, useRef } from 'react'
 import { apiGetAll, apiPost } from '../../utils/api'
@@ -211,7 +212,7 @@ export default function QuotationsPage() {
 
       {/* Table */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ minWidth: 800 }}>
+        <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
           <thead>
             <tr>
               <th>Quote No</th>
@@ -274,7 +275,7 @@ export default function QuotationsPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></PaginatedTable>
       </div>
 
       {/* PDF Preview Drawer/Modal */}

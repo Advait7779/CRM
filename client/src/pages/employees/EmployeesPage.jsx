@@ -1,10 +1,11 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, X, LogOut, CheckCircle2, FileText, Printer, Eye, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { localDateString } from '../../utils/date'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiGetAll, apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
+import { apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
 const emptyForm = { name: '', dept: 'Sales', role: '', phone: '', email: '', basicSalary: 20000, incentive: 0, deduction: 0 }
@@ -26,8 +27,8 @@ export default function EmployeesPage() {
     try {
       const [employeeRows, attendanceRows, payrollRows] = await Promise.all([
         apiGetAll('/employees'),
-        apiGet(`/attendance?date=${today}`),
-        apiGet(`/payroll?period=${currentPeriod}`)
+        apiGetAll(`/attendance?date=${today}`),
+        apiGetAll(`/payroll?period=${currentPeriod}`)
       ])
       setEmployees(employeeRows)
       setAttendance(attendanceRows)
@@ -127,7 +128,7 @@ export default function EmployeesPage() {
 
       {activeTab === 'attendance' && (
         <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <table className="data-table" style={{ minWidth: 800 }}>
+          <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
             <thead>
               <tr>
                 <th style={{ width: '22%' }}>Employee</th>
@@ -171,13 +172,13 @@ export default function EmployeesPage() {
                 )
               })}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
 
       {activeTab === 'salary' && (
         <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <table className="data-table" style={{ minWidth: 800 }}>
+          <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
             <thead>
               <tr>
                 <th style={{ width: '20%' }}>Employee</th>
@@ -234,7 +235,7 @@ export default function EmployeesPage() {
                 )
               })}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
 

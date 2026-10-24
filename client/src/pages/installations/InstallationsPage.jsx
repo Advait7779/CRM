@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useEffect, useState } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
@@ -224,7 +225,7 @@ export default function InstallationsPage() {
       {/* GPS Content */}
       {activeTab === 'gps' && (
         <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <table className="data-table" style={{ minWidth: 960 }}>
+          <PaginatedTable><table className="data-table" style={{ minWidth: 960 }}>
             <thead>
               <tr>
                 <th>Vehicle Number</th>
@@ -303,14 +304,14 @@ export default function InstallationsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
 
       {/* CCTV Content */}
       {activeTab === 'cctv' && (
         <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <table className="data-table" style={{ minWidth: 800 }}>
+          <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
             <thead>
               <tr>
                 <th>Customer</th>
@@ -381,7 +382,7 @@ export default function InstallationsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
 

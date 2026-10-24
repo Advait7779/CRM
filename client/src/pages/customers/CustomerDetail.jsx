@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Phone, Mail, MapPin, Upload, Download, Pencil, Trash2 } from 'lucide-react'
@@ -176,13 +177,13 @@ export default function CustomerDetail() {
             {serviceList(customer.services).length === 0 && <span className="text-muted">No services recorded.</span>}
           </div>
           <h3 style={{ marginTop: 28 }}>Renewals</h3>
-          <table className="data-table" style={{ marginTop: 12 }}>
+          <PaginatedTable><table className="data-table" style={{ marginTop: 12 }}>
             <thead><tr><th>Type</th><th>Next Due</th><th>Amount</th><th>Status</th></tr></thead>
             <tbody>
               {renewals.map(item => <tr key={item.id}><td>{item.type}</td><td>{item.nextDue}</td><td>{item.amount}</td><td>{item.status}</td></tr>)}
               {renewals.length === 0 && <tr><td colSpan="4">No renewal records.</td></tr>}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
       {activeTab === 'documents' && (
@@ -194,7 +195,7 @@ export default function CustomerDetail() {
               <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt" hidden disabled={uploading} onChange={uploadDocument} />
             </label>
           </div>
-          <table className="data-table" style={{ marginTop: 16 }}>
+          <PaginatedTable><table className="data-table" style={{ marginTop: 16 }}>
             <thead><tr><th>File</th><th>Uploaded</th><th>Size</th><th>Actions</th></tr></thead>
             <tbody>
               {(customer.documents || []).map(document => (
@@ -210,31 +211,31 @@ export default function CustomerDetail() {
               ))}
               {(customer.documents || []).length === 0 && <tr><td colSpan="4">No documents uploaded.</td></tr>}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
 
       {activeTab === 'invoices' && (
         <div className="glass-card" style={{ overflow: 'hidden' }}>
-          <table className="data-table">
+          <PaginatedTable><table className="data-table">
             <thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Status</th></tr></thead>
             <tbody>
               {invoices.map(item => <tr key={item.id}><td>{item.id}</td><td>{item.date}</td><td>{money(item.total)}</td><td>{item.status}</td></tr>)}
               {invoices.length === 0 && <tr><td colSpan="4">No invoices.</td></tr>}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
 
       {activeTab === 'tickets' && (
         <div className="glass-card" style={{ overflow: 'hidden' }}>
-          <table className="data-table">
+          <PaginatedTable><table className="data-table">
             <thead><tr><th>Subject</th><th>Service</th><th>Priority</th><th>Status</th></tr></thead>
             <tbody>
               {tickets.map(item => <tr key={item.id}><td>{item.subject}</td><td>{item.service}</td><td>{item.priority}</td><td>{item.status}</td></tr>)}
               {tickets.length === 0 && <tr><td colSpan="4">No service tickets.</td></tr>}
             </tbody>
-          </table>
+          </table></PaginatedTable>
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, X, Receipt, Trash2, Printer, Eye } from 'lucide-react'
@@ -140,7 +141,7 @@ export default function AccountsPage() {
       {loading ? <div className="glass-card" style={{ padding: 30 }}>Loading accounts...</div> : (
         <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {activeTab === 'invoices' && (
-            <table className="data-table" style={{ minWidth: 800 }}>
+            <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
               <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Subtotal</th><th>GST</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
                 {invoices.map(invoice => (
@@ -190,25 +191,25 @@ export default function AccountsPage() {
                 ))}
                 {invoices.length === 0 && <tr><td colSpan="8">No invoices.</td></tr>}
               </tbody>
-            </table>
+            </table></PaginatedTable>
           )}
           {activeTab === 'payments' && (
-            <table className="data-table" style={{ minWidth: 800 }}>
+            <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
               <thead><tr><th>Receipt</th><th>Invoice</th><th>Customer</th><th>Date</th><th>Method</th><th>Amount</th></tr></thead>
               <tbody>
                 {payments.map(payment => <tr key={payment.id}><td>{payment.id}</td><td>{payment.invoiceId}</td><td>{payment.customer}</td><td>{payment.date}</td><td>{payment.method}</td><td>{money(payment.amount)}</td></tr>)}
                 {payments.length === 0 && <tr><td colSpan="6">No payments recorded.</td></tr>}
               </tbody>
-            </table>
+            </table></PaginatedTable>
           )}
           {activeTab === 'outstanding' && (
-            <table className="data-table" style={{ minWidth: 800 }}>
+            <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
               <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
                 {outstandingInvoices.map(invoice => <tr key={invoice.id}><td>{invoice.id}</td><td>{invoice.customer}</td><td>{invoice.date}</td><td>{money(invoice.total)}</td><td>{invoice.status}</td><td><button className="btn-secondary" onClick={() => recordPayment(invoice)}>Record Receipt</button></td></tr>)}
                 {outstandingInvoices.length === 0 && <tr><td colSpan="6">No outstanding invoices.</td></tr>}
               </tbody>
-            </table>
+            </table></PaginatedTable>
           )}
         </div>
       )}

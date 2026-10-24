@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiDownload, apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
@@ -287,7 +288,7 @@ export default function LeadsPage() {
 
       {/* List View */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ minWidth: 980 }}>
+        <PaginatedTable><table className="data-table" style={{ minWidth: 980 }}>
           <thead>
             <tr>
               <th>Name</th><th>Phone</th><th>Service</th><th>Source</th><th title="Justdial enquiry date, or date added to CRM for other leads">Lead Date</th><th>Status</th><th>Executive</th><th>Follow-up</th><th>Action</th>
@@ -397,7 +398,7 @@ export default function LeadsPage() {
               )
             })}
           </tbody>
-        </table>
+        </table></PaginatedTable>
       </div>
 
       {modal && (

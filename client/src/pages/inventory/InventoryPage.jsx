@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiGetAll, apiPost } from '../../utils/api'
@@ -164,7 +165,7 @@ export default function InventoryPage() {
 
       {/* Table */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ minWidth: 850 }}>
+        <PaginatedTable><table className="data-table" style={{ minWidth: 850 }}>
           <thead>
             <tr>
               <th>Item Name</th>
@@ -205,7 +206,7 @@ export default function InventoryPage() {
                 </tr>
               ))}
           </tbody>
-        </table>
+        </table></PaginatedTable>
       </div>
 
       {/* Stock In Modal */}

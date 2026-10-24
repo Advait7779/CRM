@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiGetAll, apiGet, apiPost, apiPut } from '../../utils/api'
@@ -125,7 +126,7 @@ export default function TasksPage() {
 
       {/* Tasks Table */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 160 }}>
-        <table className="data-table" style={{ minWidth: 720 }}>
+        <PaginatedTable><table className="data-table" style={{ minWidth: 720 }}>
           <thead>
             <tr>
               <th>SR.No.</th><th>Task</th><th>Department</th><th>Assigned To</th><th>Priority</th><th>Due Date</th><th>Status</th>
@@ -176,7 +177,7 @@ export default function TasksPage() {
               )
             })}
           </tbody>
-        </table>
+        </table></PaginatedTable>
       </div>
 
       {/* Assign Task Modal */}

@@ -1,8 +1,9 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Clock, FileText, CalendarDays, Download, Trash2, Printer, LogIn, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { apiDelete, apiDownload, apiGet, apiPost, apiPut, apiUpload } from '../../utils/api'
+import { apiDelete, apiDownload, apiGet, apiGetAll, apiPost, apiPut, apiUpload } from '../../utils/api'
 import { localDateString } from '../../utils/date'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
@@ -28,7 +29,7 @@ export default function MyWorkPage() {
 
   const load = useCallback(async () => {
     try {
-      const [hr, payrollRows] = await Promise.all([apiGet(`/my/hr?period=${currentPeriod}`), apiGet(`/my/payslips?period=${currentPeriod}`)])
+      const [hr, payrollRows] = await Promise.all([apiGet(`/my/hr?period=${currentPeriod}`), apiGetAll(`/my/payslips?period=${currentPeriod}`)])
       setData(hr)
       setPayslips(payrollRows)
     } catch (error) { toast.error(error.message) }
@@ -148,13 +149,13 @@ export default function MyWorkPage() {
           </div>
           <button className="btn-primary" disabled={busy} style={{ marginTop: 14 }}>Submit Request</button>
         </form>
-        <div className="glass-card" style={{ overflowX: 'auto' }}><table className="data-table"><thead><tr><th>Dates</th><th>Type</th><th>Days</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.leaves.map(row => <tr key={row.id}><td>{String(row.startDate).slice(0,10)} – {String(row.endDate).slice(0,10)}</td><td>{row.type}</td><td>{row.days}</td><td><span className={`badge ${statusClass(row.status)}`}>{row.status}</span></td><td>{row.status === 'Pending' && <button className="btn-secondary" onClick={() => setConfirmModal({
+        <div className="glass-card" style={{ overflowX: 'auto' }}><PaginatedTable><table className="data-table"><thead><tr><th>Dates</th><th>Type</th><th>Days</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.leaves.map(row => <tr key={row.id}><td>{String(row.startDate).slice(0,10)} – {String(row.endDate).slice(0,10)}</td><td>{row.type}</td><td>{row.days}</td><td><span className={`badge ${statusClass(row.status)}`}>{row.status}</span></td><td>{row.status === 'Pending' && <button className="btn-secondary" onClick={() => setConfirmModal({
           title: 'Cancel Leave Request',
           subtitle: `${String(row.startDate).slice(0, 10)} – ${String(row.endDate).slice(0, 10)} (${row.days} days)`,
           message: 'Are you sure you want to cancel this pending leave request?',
           confirmText: 'Cancel Leave',
           action: () => cancelLeave(row.id)
-        })}>Cancel</button>}</td></tr>)}{!data.leaves.length && <tr><td colSpan="5">No leave requests.</td></tr>}</tbody></table></div>
+        })}>Cancel</button>}</td></tr>)}{!data.leaves.length && <tr><td colSpan="5">No leave requests.</td></tr>}</tbody></table></PaginatedTable></div>
       </div>}
 
       {tab === 'documents' && <div>
@@ -175,16 +176,16 @@ export default function MyWorkPage() {
           </div>
           <button className="btn-primary" disabled={busy}>Upload</button>
         </form>
-        <div className="glass-card" style={{ overflowX: 'auto' }}><table className="data-table"><thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>{data.documents.map(doc => <tr key={doc.id}><td>{doc.type}</td><td>{doc.originalName}</td><td>{new Date(doc.createdAt).toLocaleDateString('en-IN')}</td><td><button className="btn-secondary" onClick={() => apiDownload(`/employee-documents/${doc.id}/download`, doc.originalName).catch(error => toast.error(error.message))}><Download size={14} /></button> <button className="btn-secondary" onClick={() => setConfirmModal({
+        <div className="glass-card" style={{ overflowX: 'auto' }}><PaginatedTable><table className="data-table"><thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>{data.documents.map(doc => <tr key={doc.id}><td>{doc.type}</td><td>{doc.originalName}</td><td>{new Date(doc.createdAt).toLocaleDateString('en-IN')}</td><td><button className="btn-secondary" onClick={() => apiDownload(`/employee-documents/${doc.id}/download`, doc.originalName).catch(error => toast.error(error.message))}><Download size={14} /></button> <button className="btn-secondary" onClick={() => setConfirmModal({
           title: 'Delete Document',
           subtitle: `File: ${doc.originalName}`,
           message: `Are you sure you want to delete document "${doc.originalName}"? This action cannot be undone.`,
           confirmText: 'Delete Document',
           action: () => deleteDocument(doc.id)
-        })}><Trash2 size={14} /></button></td></tr>)}{!data.documents.length && <tr><td colSpan="4">No documents uploaded.</td></tr>}</tbody></table></div>
+        })}><Trash2 size={14} /></button></td></tr>)}{!data.documents.length && <tr><td colSpan="4">No documents uploaded.</td></tr>}</tbody></table></PaginatedTable></div>
       </div>}
 
-      {tab === 'payslips' && <div className="glass-card" style={{ overflowX: 'auto' }}><table className="data-table"><thead><tr><th>Period</th><th>Gross</th><th>Attendance Deduction</th><th>Other Deduction</th><th>Net</th><th>Status</th><th></th></tr></thead><tbody>{payslips.map(row => <tr key={row.id}><td>{row.period}</td><td>{money(row.gross)}</td><td>{money(row.attendanceDeduction)}</td><td>{money(row.deduction)}</td><td><strong>{money(row.net)}</strong></td><td><span className={`badge ${statusClass(row.status)}`}>{row.status}</span></td><td><button className="btn-secondary" onClick={() => setSelectedPayslip(row)}><FileText size={14} /> View</button></td></tr>)}{!payslips.length && payroll && <tr><td>{payroll.period}</td><td>{money(payroll.gross)}</td><td>{money(payroll.attendanceDeduction)}</td><td>{money(payroll.deduction)}</td><td>{money(payroll.net)}</td><td>{payroll.status}</td><td /></tr>}</tbody></table></div>}
+      {tab === 'payslips' && <div className="glass-card" style={{ overflowX: 'auto' }}><PaginatedTable><table className="data-table"><thead><tr><th>Period</th><th>Gross</th><th>Attendance Deduction</th><th>Other Deduction</th><th>Net</th><th>Status</th><th></th></tr></thead><tbody>{payslips.map(row => <tr key={row.id}><td>{row.period}</td><td>{money(row.gross)}</td><td>{money(row.attendanceDeduction)}</td><td>{money(row.deduction)}</td><td><strong>{money(row.net)}</strong></td><td><span className={`badge ${statusClass(row.status)}`}>{row.status}</span></td><td><button className="btn-secondary" onClick={() => setSelectedPayslip(row)}><FileText size={14} /> View</button></td></tr>)}{!payslips.length && payroll && <tr><td>{payroll.period}</td><td>{money(payroll.gross)}</td><td>{money(payroll.attendanceDeduction)}</td><td>{money(payroll.deduction)}</td><td>{money(payroll.net)}</td><td>{payroll.status}</td><td /></tr>}</tbody></table></PaginatedTable></div>}
 
       {selectedPayslip && <ModalBackdrop className="modal-backdrop" onClick={() => setSelectedPayslip(null)}><div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}><h2>Salary Payslip · {selectedPayslip.period}</h2><p>{data.employee.name} · {data.employee.dept}</p><table style={{ width: '100%', margin: '20px 0' }}><tbody><tr><td>Basic salary</td><td style={{ textAlign: 'right' }}>{money(selectedPayslip.basic)}</td></tr><tr><td>Incentive</td><td style={{ textAlign: 'right' }}>{money(selectedPayslip.incentive)}</td></tr><tr><td>Attendance ({selectedPayslip.absentDays} absent days)</td><td style={{ textAlign: 'right' }}>-{money(selectedPayslip.attendanceDeduction)}</td></tr><tr><td>Other deductions</td><td style={{ textAlign: 'right' }}>-{money(selectedPayslip.deduction)}</td></tr><tr><td><strong>Net salary</strong></td><td style={{ textAlign: 'right' }}><strong>{money(selectedPayslip.net)}</strong></td></tr></tbody></table><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button className="btn-secondary" onClick={() => setSelectedPayslip(null)}>Close</button><button className="btn-primary" onClick={() => window.print()}><Printer size={15} /> Print</button></div></div></ModalBackdrop>}
 

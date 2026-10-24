@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Clock, FileUp, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -251,7 +252,7 @@ export default function RenewalsPage() {
     </div>
 
     <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table className="data-table" style={{ minWidth: 1240 }}>
+      <PaginatedTable><table className="data-table" style={{ minWidth: 1240 }}>
         <thead><tr>{fields.map(([, label]) => <th key={label}>{label}</th>)}<th>Action</th></tr></thead>
         <tbody>
           {filtered.map(row => <tr key={row.id} style={row.confirmedAt ? { background: 'rgba(16, 185, 129, 0.12)' } : undefined}>
@@ -326,7 +327,7 @@ export default function RenewalsPage() {
           </tr>)}
           {!filtered.length && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--text-secondary)' }}>{search || statusFilter !== 'all' ? 'No matching GPS renewals.' : 'No GPS renewals yet. Add one or import an Excel file.'}</td></tr>}
         </tbody>
-      </table>
+      </table></PaginatedTable>
     </div>
 
     {editing && <ModalBackdrop className="modal-backdrop" onClick={() => !busy && setEditing(null)}><div className="modal-box" onClick={event => event.stopPropagation()} style={{ maxWidth: 640 }}>

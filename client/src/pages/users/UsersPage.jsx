@@ -1,9 +1,10 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useEffect, useState } from 'react'
 import { Plus, X, Key, Eye, EyeOff, Trash2, ShieldCheck, ShieldAlert, Pencil, LogIn } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
+import { apiGet, apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 import { useAuth } from '../../context/AuthContext'
 
@@ -57,7 +58,7 @@ export default function UsersPage() {
   const [form, setForm] = useState(emptyForm)
 
   useEffect(() => {
-    apiGet('/users').then(setUsers).catch(error => toast.error(error.message))
+    apiGetAll('/users').then(setUsers).catch(error => toast.error(error.message))
     apiGet('/justdial/products')
       .then(products => setProductOptions(products.assignable || []))
       .catch(() => toast.error('Justdial product settings are unavailable. Restart the local backend.'))
@@ -167,7 +168,7 @@ export default function UsersPage() {
         <button className="btn-primary" onClick={() => setModalOpen(true)} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}><Plus size={16} /> Add User</button>
       </div>
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 160 }}>
-        <table className="data-table" style={{ overflow: 'visible', minWidth: 750 }}>
+        <PaginatedTable><table className="data-table" style={{ overflow: 'visible', minWidth: 750 }}>
           <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th style={{ width: 220 }}>Role Access</th><th>Created</th><th>Action</th></tr></thead>
           <tbody>
             {users.map((user, idx) => {
@@ -263,7 +264,7 @@ export default function UsersPage() {
               )
             })}
           </tbody>
-        </table>
+        </table></PaginatedTable>
       </div>
 
       {modalOpen && (

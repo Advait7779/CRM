@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
@@ -261,7 +262,7 @@ export default function CustomersPage() {
 
       {/* Table */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ minWidth: 1050 }}>
+        <PaginatedTable><table className="data-table" style={{ minWidth: 1050 }}>
           <thead>
             <tr>
               <th>Customer Name</th>
@@ -345,7 +346,7 @@ export default function CustomersPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></PaginatedTable>
       </div>
 
       {/* Modal */}

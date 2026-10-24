@@ -1,3 +1,4 @@
+import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { apiGetAll, apiPost, apiPut } from '../../utils/api'
@@ -102,7 +103,7 @@ export default function TicketsPage() {
 
       {/* Table */}
       <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table className="data-table" style={{ minWidth: 850 }}>
+        <PaginatedTable><table className="data-table" style={{ minWidth: 850 }}>
           <thead>
             <tr>
               <th>Ticket ID</th>
@@ -171,7 +172,7 @@ export default function TicketsPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></PaginatedTable>
       </div>
 
       {/* Modal */}

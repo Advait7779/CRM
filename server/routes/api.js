@@ -347,6 +347,12 @@ function pagination(query, defaultPageSize = 100) {
   return { skip: (page - 1) * pageSize, take: pageSize };
 }
 
+async function sendPaginatedList(req, res, rows, count) {
+  if (req.query.withTotal !== '1') return res.json(rows);
+  const { skip, take } = pagination(req.query);
+  return res.json({ rows, total: await count(), page: Math.floor(skip / take) + 1, pageSize: take });
+}
+
 function csvEscape(value) {
   const stringValue = value == null ? '' : String(value);
   return `"${stringValue.replace(/"/g, '""')}"`;
@@ -502,7 +508,8 @@ router.put('/auth/password', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 router.get('/users', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
-  res.json(await prisma.users.findMany({ select: PUBLIC_USER_SELECT, orderBy: { name: 'asc' } }));
+  const rows = await prisma.users.findMany({ select: PUBLIC_USER_SELECT, orderBy: [{ name: 'asc' }, { id: 'asc' }], ...pagination(req.query) });
+  await sendPaginatedList(req, res, rows, () => prisma.users.count());
 }));
 
 router.get('/justdial/products', authMiddleware, checkRole(ADMIN), (req, res) => {
@@ -693,13 +700,14 @@ function gpsRecordResponse(record) {
 }
 
 router.get('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE]), asyncHandler(async (req, res) => {
+  const where = { type: { startsWith: 'GPS', mode: 'insensitive' } };
   const rows = await prisma.renewals.findMany({
-    where: { type: { startsWith: 'GPS', mode: 'insensitive' } },
+    where,
     orderBy: [{ nextDue: 'asc' }, { id: 'asc' }],
     include: { Customers: { select: { phone: true } } },
     ...pagination(req.query)
   });
-  res.json(rows.map(gpsRecordResponse));
+  await sendPaginatedList(req, res, rows.map(gpsRecordResponse), () => prisma.renewals.count({ where }));
 }));
 
 router.post('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE]), asyncHandler(async (req, res) => {
@@ -872,7 +880,8 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
       ...(await compatibilitySelect(config.model))
     });
     const compatibleRecords = await restoreLegacyDecimalFields(config.model, records);
-    res.json(routeName === 'renewals' ? compatibleRecords.map(renewalWithComputedStatus) : compatibleRecords);
+    const rows = routeName === 'renewals' ? compatibleRecords.map(renewalWithComputedStatus) : compatibleRecords;
+    await sendPaginatedList(req, res, rows, () => prisma[config.model].count({ where }));
   }));
 
   router.get(`/${routeName}/:id`, authMiddleware, checkRole(config.readRoles), asyncHandler(async (req, res) => {
@@ -1541,13 +1550,14 @@ router.get('/my/hr', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (r
 router.get('/leaves', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
   const isAdmin = ADMIN.includes(req.user.role);
   const employee = isAdmin ? null : await employeeForUser(req.user);
+  const where = isAdmin ? (req.query.status ? { status: req.query.status } : {}) : { employeeId: employee.id };
   const rows = await prisma.leaveRequests.findMany({
-    where: isAdmin ? (req.query.status ? { status: req.query.status } : {}) : { employeeId: employee.id },
+    where,
     include: { Employees: { select: { id: true, name: true, email: true, dept: true } } },
     orderBy: { createdAt: 'desc' },
     ...pagination(req.query)
   });
-  res.json(rows.map(({ Employees, ...leave }) => ({ ...leave, employee: Employees })));
+  await sendPaginatedList(req, res, rows.map(({ Employees, ...leave }) => ({ ...leave, employee: Employees })), () => prisma.leaveRequests.count({ where }));
 }));
 
 router.post('/leaves', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
@@ -1621,7 +1631,8 @@ router.get('/attendance', authMiddleware, checkRole(ALL_STAFF), asyncHandler(asy
   const date = String(req.query.date || currentDateOnly());
   const where = { date: toDateOnly(date) };
   if (!ADMIN.includes(req.user.role)) where.employeeId = (await employeeForUser(req.user)).id;
-  res.json(await prisma.attendances.findMany({ where, orderBy: { employeeId: 'asc' } }));
+  const rows = await prisma.attendances.findMany({ where, orderBy: { employeeId: 'asc' }, ...pagination(req.query) });
+  await sendPaginatedList(req, res, rows, () => prisma.attendances.count({ where }));
 }));
 
 router.put('/attendance/:employeeId', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
@@ -1656,16 +1667,19 @@ router.put('/attendance/:employeeId', authMiddleware, checkRole(ALL_STAFF), asyn
 router.get('/payroll', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
   const period = String(req.query.period || currentDateOnly().slice(0, 7));
   periodDetails(period);
-  const employees = await prisma.employees.findMany({ orderBy: { name: 'asc' } });
-  res.json(await Promise.all(employees.map((employee) => calculatePayroll(employee, period))));
+  const employees = await prisma.employees.findMany({ orderBy: [{ name: 'asc' }, { id: 'asc' }], ...pagination(req.query) });
+  const rows = await Promise.all(employees.map((employee) => calculatePayroll(employee, period)));
+  await sendPaginatedList(req, res, rows, () => prisma.employees.count());
 }));
 
 router.get('/my/payslips', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
   const employee = await findEmployeeForUser(req.user);
-  if (!employee) return res.json([]);
+  if (!employee) return sendPaginatedList(req, res, [], async () => 0);
   const period = req.query.period ? String(req.query.period) : null;
   if (period) await calculatePayroll(employee, period);
-  res.json(await prisma.payrolls.findMany({ where: { employeeId: employee.id }, orderBy: { period: 'desc' }, take: 36 }));
+  const where = { employeeId: employee.id };
+  const rows = await prisma.payrolls.findMany({ where, orderBy: { period: 'desc' }, ...pagination(req.query) });
+  await sendPaginatedList(req, res, rows, () => prisma.payrolls.count({ where }));
 }));
 
 router.put('/payroll/:id/pay', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
@@ -1731,11 +1745,13 @@ router.post('/inventory/:id/adjust', authMiddleware, checkRole([...OPERATIONS, .
 }));
 
 router.get('/inventory/:id/transactions', authMiddleware, checkRole([...OPERATIONS, ...MANAGEMENT]), asyncHandler(async (req, res) => {
-  res.json(await prisma.inventoryTransactions.findMany({
-    where: { inventoryId: Number(req.params.id) },
+  const where = { inventoryId: Number(req.params.id) };
+  const rows = await prisma.inventoryTransactions.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
     ...pagination(req.query)
-  }));
+  });
+  await sendPaginatedList(req, res, rows, () => prisma.inventoryTransactions.count({ where }));
 }));
 
 const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads'));
@@ -1984,7 +2000,9 @@ router.get('/employees/:id/documents', authMiddleware, checkRole(ADMIN), asyncHa
   const employeeId = Number(req.params.id);
   const employee = await prisma.employees.findUnique({ where: { id: employeeId }, select: { id: true } });
   if (!employee) return res.status(404).json({ message: 'Employee not found.' });
-  res.json(await prisma.employeeDocuments.findMany({ where: { employeeId }, orderBy: { createdAt: 'desc' } }));
+  const where = { employeeId };
+  const rows = await prisma.employeeDocuments.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...pagination(req.query) });
+  await sendPaginatedList(req, res, rows, () => prisma.employeeDocuments.count({ where }));
 }));
 
 router.post('/employees/:id/documents', authMiddleware, checkRole(ADMIN), uploadLimiter, upload.single('document'), asyncHandler(async (req, res) => {
@@ -2058,7 +2076,8 @@ router.delete('/employee-documents/:id', authMiddleware, checkRole(ALL_STAFF), a
 }));
 
 router.get('/payments', authMiddleware, checkRole(FINANCE), asyncHandler(async (req, res) => {
-  res.json(await prisma.payments.findMany({ orderBy: [{ date: 'desc' }, { createdAt: 'desc' }], ...pagination(req.query) }));
+  const rows = await prisma.payments.findMany({ orderBy: [{ date: 'desc' }, { createdAt: 'desc' }], ...pagination(req.query) });
+  await sendPaginatedList(req, res, rows, () => prisma.payments.count());
 }));
 
 router.post('/payments', authMiddleware, checkRole(FINANCE), asyncHandler(async (req, res) => {
