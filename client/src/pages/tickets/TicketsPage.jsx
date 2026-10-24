@@ -102,7 +102,7 @@ export default function TicketsPage() {
       </div>
 
       {/* Table */}
-      <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <PaginatedTable><table className="data-table" style={{ minWidth: 850 }}>
           <thead>
             <tr>

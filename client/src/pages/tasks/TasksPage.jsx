@@ -125,8 +125,8 @@ export default function TasksPage() {
       </div>
 
       {/* Tasks Table */}
-      <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 160 }}>
-        <PaginatedTable><table className="data-table" style={{ minWidth: 720 }}>
+      <div className="table-pagination-shell" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <PaginatedTable menuSpace><table className="data-table" style={{ minWidth: 720 }}>
           <thead>
             <tr>
               <th>SR.No.</th><th>Task</th><th>Department</th><th>Assigned To</th><th>Priority</th><th>Due Date</th><th>Status</th>

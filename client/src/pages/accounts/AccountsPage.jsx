@@ -139,7 +139,7 @@ export default function AccountsPage() {
       </div>
 
       {loading ? <div className="glass-card" style={{ padding: 30 }}>Loading accounts...</div> : (
-        <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {activeTab === 'invoices' && (
             <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
               <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Subtotal</th><th>GST</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>

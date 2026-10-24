@@ -170,32 +170,36 @@ export default function CustomerDetail() {
       )}
 
       {activeTab === 'services' && (
-        <div className="glass-card" style={{ padding: 24 }}>
-          <h3>Active Services</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
-            {serviceList(customer.services).map(service => <span className="badge badge-primary" key={service}>{service}</span>)}
-            {serviceList(customer.services).length === 0 && <span className="text-muted">No services recorded.</span>}
+        <>
+          <div className="glass-card" style={{ padding: 24 }}>
+            <h3>Active Services</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
+              {serviceList(customer.services).map(service => <span className="badge badge-primary" key={service}>{service}</span>)}
+              {serviceList(customer.services).length === 0 && <span className="text-muted">No services recorded.</span>}
+            </div>
           </div>
-          <h3 style={{ marginTop: 28 }}>Renewals</h3>
-          <PaginatedTable><table className="data-table" style={{ marginTop: 12 }}>
+          <h3 style={{ marginTop: 28, marginBottom: 12 }}>Renewals</h3>
+          <PaginatedTable><table className="data-table">
             <thead><tr><th>Type</th><th>Next Due</th><th>Amount</th><th>Status</th></tr></thead>
             <tbody>
               {renewals.map(item => <tr key={item.id}><td>{item.type}</td><td>{item.nextDue}</td><td>{item.amount}</td><td>{item.status}</td></tr>)}
               {renewals.length === 0 && <tr><td colSpan="4">No renewal records.</td></tr>}
             </tbody>
           </table></PaginatedTable>
-        </div>
+        </>
       )}
       {activeTab === 'documents' && (
-        <div className="glass-card" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3>Customer Documents</h3>
-            <label className="btn-primary" style={{ cursor: 'pointer' }}>
-              <Upload size={15} /> {uploading ? 'Uploading...' : 'Upload'}
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt" hidden disabled={uploading} onChange={uploadDocument} />
-            </label>
+        <>
+          <div className="glass-card" style={{ padding: 24, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>Customer Documents</h3>
+              <label className="btn-primary" style={{ cursor: 'pointer' }}>
+                <Upload size={15} /> {uploading ? 'Uploading...' : 'Upload'}
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt" hidden disabled={uploading} onChange={uploadDocument} />
+              </label>
+            </div>
           </div>
-          <PaginatedTable><table className="data-table" style={{ marginTop: 16 }}>
+          <PaginatedTable><table className="data-table">
             <thead><tr><th>File</th><th>Uploaded</th><th>Size</th><th>Actions</th></tr></thead>
             <tbody>
               {(customer.documents || []).map(document => (
@@ -212,11 +216,11 @@ export default function CustomerDetail() {
               {(customer.documents || []).length === 0 && <tr><td colSpan="4">No documents uploaded.</td></tr>}
             </tbody>
           </table></PaginatedTable>
-        </div>
+        </>
       )}
 
       {activeTab === 'invoices' && (
-        <div className="glass-card" style={{ overflow: 'hidden' }}>
+        <div className="table-pagination-shell" style={{ overflow: 'hidden' }}>
           <PaginatedTable><table className="data-table">
             <thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Status</th></tr></thead>
             <tbody>
@@ -228,7 +232,7 @@ export default function CustomerDetail() {
       )}
 
       {activeTab === 'tickets' && (
-        <div className="glass-card" style={{ overflow: 'hidden' }}>
+        <div className="table-pagination-shell" style={{ overflow: 'hidden' }}>
           <PaginatedTable><table className="data-table">
             <thead><tr><th>Subject</th><th>Service</th><th>Priority</th><th>Status</th></tr></thead>
             <tbody>

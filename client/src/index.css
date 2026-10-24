@@ -155,16 +155,28 @@ select:disabled,
   transform: translateY(-1px);
 }
 
+.table-pagination-shell {
+  overflow: visible !important;
+}
+
 .table-pagination-top {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 0 0 10px;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.table-pagination-surface {
+  background: var(--bg-card-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  overflow-x: auto;
 }
 
 .table-pagination-bottom {

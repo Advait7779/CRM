@@ -167,8 +167,8 @@ export default function UsersPage() {
         <div><h1 className="page-title">System Users</h1><p className="page-subtitle">Create login accounts and assign access roles.</p></div>
         <button className="btn-primary" onClick={() => setModalOpen(true)} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}><Plus size={16} /> Add User</button>
       </div>
-      <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 160 }}>
-        <PaginatedTable><table className="data-table" style={{ overflow: 'visible', minWidth: 750 }}>
+      <div className="table-pagination-shell" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <PaginatedTable menuSpace><table className="data-table" style={{ overflow: 'visible', minWidth: 750 }}>
           <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th style={{ width: 220 }}>Role Access</th><th>Created</th><th>Action</th></tr></thead>
           <tbody>
             {users.map((user, idx) => {

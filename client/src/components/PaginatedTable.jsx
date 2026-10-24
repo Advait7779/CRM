@@ -10,7 +10,7 @@ function rowsFrom(children) {
   ).filter(Boolean)
 }
 
-export default function PaginatedTable({ children }) {
+export default function PaginatedTable({ children, menuSpace = false }) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const table = Children.only(children)
@@ -44,17 +44,19 @@ export default function PaginatedTable({ children }) {
         {PAGE_SIZES.map(size => <option key={size} value={size}>{size} rows</option>)}
       </ThemeSelect>
     </div>
-    {pagedTable}
-    <div className="table-pagination-bottom">
-      <span>{rowCount ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, rowCount)} of ${rowCount}` : '0 rows'}</span>
-      <nav aria-label="Table pages" className="table-pagination-pages">
-        <button type="button" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={16} /></button>
-        {pageNumbers.map((number, index) => <Fragment key={number}>
-          {index > 0 && number > pageNumbers[index - 1] + 1 && <span aria-hidden="true">…</span>}
-          <button type="button" aria-label={`Page ${number}`} aria-current={number === currentPage ? 'page' : undefined} className={number === currentPage ? 'active' : ''} onClick={() => setPage(number)}>{number}</button>
-        </Fragment>)}
-        <button type="button" aria-label="Next page" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={16} /></button>
-      </nav>
+    <div className="table-pagination-surface" style={menuSpace ? { paddingBottom: 160 } : undefined}>
+      {pagedTable}
+      <div className="table-pagination-bottom">
+        <span>{rowCount ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, rowCount)} of ${rowCount}` : '0 rows'}</span>
+        <nav aria-label="Table pages" className="table-pagination-pages">
+          <button type="button" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={16} /></button>
+          {pageNumbers.map((number, index) => <Fragment key={number}>
+            {index > 0 && number > pageNumbers[index - 1] + 1 && <span aria-hidden="true">…</span>}
+            <button type="button" aria-label={`Page ${number}`} aria-current={number === currentPage ? 'page' : undefined} className={number === currentPage ? 'active' : ''} onClick={() => setPage(number)}>{number}</button>
+          </Fragment>)}
+          <button type="button" aria-label="Next page" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={16} /></button>
+        </nav>
+      </div>
     </div>
   </>
 }

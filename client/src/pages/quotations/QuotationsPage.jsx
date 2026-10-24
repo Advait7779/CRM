@@ -211,7 +211,7 @@ export default function QuotationsPage() {
       </div>
 
       {/* Table */}
-      <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
           <thead>
             <tr>

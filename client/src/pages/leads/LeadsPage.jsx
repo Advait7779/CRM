@@ -287,7 +287,7 @@ export default function LeadsPage() {
       </div>
 
       {/* List View */}
-      <div className="glass-card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <PaginatedTable><table className="data-table" style={{ minWidth: 980 }}>
           <thead>
             <tr>
