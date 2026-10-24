@@ -25,6 +25,7 @@ const GREETING_OPTIONS = [
 const SETTING_KEYS = [
   ...CUSTOMER_SETTING_KEYS,
   'new_lead_sms_webhook_url',
+  'gps_renewal_expired_sms_webhook_url',
   ...GREETING_OPTIONS.flatMap(option => [
     `greeting_${option.occasion}_${option.channel}_webhook_url`,
     `greeting_${option.occasion}_${option.channel}_preview_text`
@@ -224,6 +225,26 @@ export default function SettingsPage() {
               style={{ minHeight: 92, fontSize: 12, fontFamily: 'monospace', resize: 'vertical', lineHeight: 1.5 }}
             />
             <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>Use {'{phone}'} in the recipient parameter, or an existing phone/number parameter will be replaced.</p>
+          </div>
+        </section>
+
+        <section className="glass-card" style={{ padding: 28, marginTop: 36 }}>
+          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>Expired GPS Renewal SMS</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>
+            After an Excel import, send an SMS for each expired, unconfirmed GPS renewal with a valid mobile number. Successful requests are not repeated on later uploads. Each renewal row sends separately, so one customer may receive messages for multiple devices. Leave this URL blank to disable sending.
+          </p>
+          <div className="form-group">
+            <label className="form-label">Expired renewal SMS URL</label>
+            <textarea
+              className="input-field"
+              value={form.gps_renewal_expired_sms_webhook_url}
+              onChange={e => setForm(current => ({ ...current, gps_renewal_expired_sms_webhook_url: e.target.value }))}
+              placeholder="https://provider.example/send-sms?number={phone}&sms=...&templateid=..."
+              style={{ minHeight: 92, fontSize: 12, fontFamily: 'monospace', resize: 'vertical', lineHeight: 1.5 }}
+            />
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
+              Use {'{phone}'} for the recipient. In the sms, message, or msg text, you can use {'{name}'}, {'{imei}'}, {'{vehicle}'}, and {'{expiry_date}'}. Reimport the workbook after saving this URL to send for previously imported expired renewals.
+            </p>
           </div>
         </section>
 

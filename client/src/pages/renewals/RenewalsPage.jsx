@@ -164,8 +164,11 @@ export default function RenewalsPage() {
       const result = await apiUpload('/gps-renewals/import', data)
       const summary = `${result.imported} imported, ${result.updated || 0} SIM numbers updated, ${result.skipped} already in CRM`
       toast.success(summary, { duration: 6000 })
+      if (result.smsQueued) toast.success(`${result.smsQueued} expired renewal SMS request(s) queued.`, { duration: 6000 })
+      else if (result.smsConfiguration === 'not_configured') toast('Expired renewal SMS is off. Add its URL in Settings, then reimport this file to send.', { icon: 'ℹ️', duration: 8000 })
+      else if (result.smsConfiguration === 'invalid_url') toast.error('Expired renewal SMS URL in Settings is invalid. Renewals imported without SMS.', { duration: 8000 })
       if (result.warnings?.length) toast(`${result.warnings.length} Excel warning(s): ${result.warnings.map(warning => `row ${warning.rowNumber}`).join(', ')}. Check the identifiers in the source file.`, { icon: '⚠️', duration: 10000 })
-      if (result.missingContactCount) toast(`${result.missingContactCount} renewals have no contact number in the source file.`, { icon: 'ℹ️', duration: 8000 })
+      if (result.missingContactCount) toast(`${result.missingContactCount} renewals have no valid mobile number for SMS.`, { icon: 'ℹ️', duration: 8000 })
       await load()
     } catch (error) { toast.error(error.message) }
     finally { setImporting(false) }

@@ -349,6 +349,10 @@ model Renewals {
   followUpDate DateTime? @db.Date
   remarks    String?   @db.VarChar(500)
   confirmedAt DateTime? @db.Timestamptz(6)
+  expiredSmsStatus String? @db.VarChar(16)
+  expiredSmsClaimId String? @db.VarChar(36)
+  expiredSmsClaimedAt DateTime? @db.Timestamptz(6)
+  expiredSmsSentAt DateTime? @db.Timestamptz(6)
   amount     Decimal   @db.Decimal(14, 2)
   daysLeft  Int?
   status    String?   @default("Active") @db.VarChar(255)
@@ -361,6 +365,7 @@ model Renewals {
   @@index([imeiNo, nextDue], map: "renewals_imei_expiry")
   @@index([status], map: "renewals_status")
   @@index([followUpDate], map: "renewals_follow_up_date")
+  @@index([expiredSmsClaimId], map: "renewals_expired_sms_claim_id")
 }
 
 model Tasks {
