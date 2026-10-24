@@ -40,7 +40,7 @@ export default function PaginatedTable({ children, menuSpace = false }) {
   return <>
     <div className="table-pagination-top">
       <span>Show:</span>
-      <ThemeSelect value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1) }} style={{ width: 118 }}>
+      <ThemeSelect value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1) }} menuMinWidth={96} style={{ width: 96, height: 32, fontSize: 12, paddingLeft: 9, paddingRight: 22, borderRadius: 8 }}>
         {PAGE_SIZES.map(size => <option key={size} value={size}>{size} rows</option>)}
       </ThemeSelect>
     </div>

@@ -1,19 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 
-export default function ThemeSelect({ value, onChange, children, disabled = false, className = "", style = {} }) {
+export default function ThemeSelect({ value, onChange, children, disabled = false, className = "", style = {}, menuMinWidth = 150 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, openUpward: false })
   const buttonRef = useRef(null)
   const menuRef = useRef(null)
 
-  const updateCoords = () => {
+  const updateCoords = useCallback(() => {
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
       const spaceBelow = window.innerHeight - rect.bottom
       const openUpward = spaceBelow < 220 && rect.top > 220
-      const menuWidth = Math.min(window.innerWidth - 16, Math.max(rect.width, 150))
+      const menuWidth = Math.min(window.innerWidth - 16, Math.max(rect.width, menuMinWidth))
       setCoords({
         top: openUpward ? rect.top - 4 : rect.bottom + 4,
         left: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
@@ -21,7 +21,7 @@ export default function ThemeSelect({ value, onChange, children, disabled = fals
         openUpward
       })
     }
-  }
+  }, [menuMinWidth])
 
   useEffect(() => {
     if (disabled) setIsOpen(false)
@@ -37,7 +37,7 @@ export default function ThemeSelect({ value, onChange, children, disabled = fals
         window.removeEventListener('scroll', updateCoords, true)
       }
     }
-  }, [isOpen])
+  }, [isOpen, updateCoords])
 
   // Click outside listener to close dropdown
   useEffect(() => {
