@@ -291,7 +291,7 @@ export default function LeadsPage() {
         <PaginatedTable><table className="data-table" style={{ minWidth: 980 }}>
           <thead>
             <tr>
-              <th>Name</th><th>Phone</th><th>Service</th><th>Source</th><th title="Justdial enquiry date, or date added to CRM for other leads">Lead Date</th><th>Status</th><th>Executive</th><th>Follow-up</th><th>Action</th>
+              <th>Name</th><th>Phone</th><th>Service</th><th>Source</th><th title="Original enquiry date for imported leads, or date added to CRM">Lead Date</th><th>Status</th><th>Executive</th><th>Follow-up</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -317,6 +317,7 @@ export default function LeadsPage() {
                       <SrcIcon size={12} /> {l.source}
                     </span>
                     {l.websiteFormSource && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>{l.websiteFormSource}</div>}
+                    {l.facebookPlatform && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>{l.facebookPlatform === 'ig' ? 'Instagram' : 'Facebook'}</div>}
                   </td>
                   <td title={leadDate.title} style={{ whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{leadDate.date}</div>

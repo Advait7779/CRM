@@ -1,7 +1,7 @@
 const ExcelJS = require('exceljs')
 const { jsonReplacer } = require('./prismaData')
 
-const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads']
+const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads', 'Facebook Leads']
 const DIGITAL_PRODUCTS = new Set([
   'SMS', 'WhatsApp WABA', 'RCS', 'Voice Call',
   'Website Development', 'Software Development', 'Digital Marketing'
@@ -10,6 +10,7 @@ const DIGITAL_PRODUCTS = new Set([
 function leadMatchesGroup(lead, group) {
   if (group === 'All') return true
   if (group === 'Website Leads') return Boolean(lead.websiteLeadId)
+  if (group === 'Facebook Leads') return lead.source === 'Facebook'
   if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor'
     if (group === 'CCTV') return lead.justdialProduct === 'CCTV'
@@ -81,6 +82,10 @@ function isoExcelDate(value, time = '') {
 }
 
 function leadExcelDate(lead) {
+  if (lead.facebookLeadId && lead.facebookSubmittedAt) {
+    const submittedAt = localExcelDate(lead.facebookSubmittedAt)
+    if (submittedAt) return submittedAt
+  }
   if (lead.websiteLeadId && lead.websiteSubmittedAt) {
     const submittedAt = localExcelDate(lead.websiteSubmittedAt)
     if (submittedAt) return submittedAt

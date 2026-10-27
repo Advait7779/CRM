@@ -241,6 +241,10 @@ model Leads {
   websiteLeadId       String?          @unique @db.VarChar(255)
   websiteFormSource   String?          @db.VarChar(150)
   websiteSubmittedAt  DateTime?        @db.Timestamptz(6)
+  facebookLeadId      String?          @unique @db.VarChar(255)
+  facebookSubmittedAt DateTime?        @db.Timestamptz(6)
+  facebookPlatform    String?          @db.VarChar(20)
+  facebookPayload     Json?
   convertedCustomerId Int?
   createdAt           DateTime           @db.Timestamptz(6)
   updatedAt           DateTime           @db.Timestamptz(6)
@@ -252,6 +256,7 @@ model Leads {
   @@index([source], map: "leads_source")
   @@index([source, justdialProduct], map: "leads_justdial_product")
   @@index([websiteSubmittedAt], map: "leads_website_submitted_at")
+  @@index([facebookSubmittedAt], map: "leads_facebook_submitted_at")
   @@index([exec, justdialProduct], map: "leads_assignee_product")
 }
 

@@ -12,12 +12,24 @@ const leads = [
 ]
 
 test('product filters match the mobile grouping, including unclassified leads in All', () => {
-  assert.deepEqual(LEAD_GROUPS, ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads'])
+  assert.deepEqual(LEAD_GROUPS, ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads', 'Facebook Leads'])
   assert.deepEqual(leads.filter(lead => leadMatchesGroup(lead, 'CCTV')).map(lead => lead.id), [1, 5])
   assert.deepEqual(leads.filter(lead => leadMatchesGroup(lead, 'GPS & Fuel Sensor')).map(lead => lead.id), [2])
   assert.deepEqual(leads.filter(lead => leadMatchesGroup(lead, 'Digital Services')).map(lead => lead.id), [3])
   assert.equal(leads.filter(lead => leadMatchesGroup(lead, 'All')).length, 5)
   assert.deepEqual(filterLeads(leads, 'CCTV', 'camera').map(lead => lead.id), [1])
+})
+
+test('Facebook Leads and Excel use the original enquiry date', () => {
+  const imported = {
+    id: 7, name: 'Instagram customer', phone: '+919876543210', source: 'Facebook',
+    service: 'WhatsApp API for Business', facebookLeadId: 'l:123', facebookPlatform: 'ig',
+    facebookSubmittedAt: '2026-10-26T22:04:23+05:30', createdAt: '2026-10-27T07:00:00Z', status: 'New'
+  }
+  const selected = filterLeads([...leads, imported], 'Facebook Leads', '')
+  assert.deepEqual(selected.map(lead => lead.id), [7])
+  const workbook = buildLeadsWorkbook(selected, 'Facebook Leads')
+  assert.equal(workbook.getWorksheet('Leads').getCell('I6').value.toISOString(), '2026-10-26T22:04:00.000Z')
 })
 
 test('Website Leads includes imported enquiries but excludes manually entered Website leads', async () => {

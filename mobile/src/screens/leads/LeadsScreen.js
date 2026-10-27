@@ -37,11 +37,13 @@ const ACTION_STATUSES = ['Connected', 'Future Prospect', 'Fake Enquiry', 'Intere
 const STATUS_LIST = ['New', ...ACTION_STATUSES];
 const SOURCE_LIST = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial', 'Other'];
 const SERVICE_LIST = ['GPS Tracking', 'CCTV', 'CCTV Security', 'Website Design', 'Web Development', 'Software Development', 'SMS Package', 'WhatsApp WABA', 'RCS Messaging', 'Voice Package', 'Digital Marketing', 'AMC Support'];
-const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services'];
+const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads', 'Facebook Leads'];
 const DIGITAL_PRODUCTS = new Set(['SMS', 'WhatsApp WABA', 'RCS', 'Voice Call', 'Website Development', 'Software Development', 'Digital Marketing']);
 
 function leadMatchesGroup(lead, group) {
   if (group === 'All') return true;
+  if (group === 'Website Leads') return Boolean(lead.websiteLeadId);
+  if (group === 'Facebook Leads') return lead.source === 'Facebook';
   if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor';
     if (group === 'CCTV') return lead.justdialProduct === 'CCTV';
@@ -53,6 +55,11 @@ function leadMatchesGroup(lead, group) {
   return /\b(sms|rcs|whatsapp|waba|voice|ivr|website|web design|web development|software|app development|digital marketing|seo)\b/i.test(service);
 }
 const leadDate = lead => {
+  const importedDate = lead.facebookLeadId ? lead.facebookSubmittedAt : lead.websiteLeadId ? lead.websiteSubmittedAt : null;
+  if (importedDate) {
+    const submitted = new Date(importedDate);
+    if (!Number.isNaN(submitted.getTime())) return submitted.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
   const enquiryDate = lead.source === 'Justdial' ? String(lead.justdialPayload?.date || '') : '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(enquiryDate) && !Number.isNaN(new Date(`${enquiryDate}T00:00:00Z`).getTime())) {
     return `${enquiryDate}${lead.justdialPayload?.time ? ` ${String(lead.justdialPayload.time).slice(0, 5)}` : ''}`;
