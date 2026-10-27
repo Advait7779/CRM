@@ -16,11 +16,15 @@ const formatDate = value => {
   return date && !Number.isNaN(date.getTime()) ? dateFormatter.format(date) : '—'
 }
 const text = value => String(value ?? '')
+const connectionErrorMessage = error => error?.message === 'API endpoint not found.'
+  ? 'The Facebook Leads API is not deployed on the CRM server yet. Redeploy the server from the latest main branch.'
+  : error?.message || 'Could not reach the CRM server.'
 
 export default function FacebookLeadsPage() {
   const { user } = useAuth()
   const isAdmin = ['super_admin', 'director'].includes(user?.role)
-  const [connection, setConnection] = useState({ configured: false, tabs: [], issues: [] })
+  const [connection, setConnection] = useState(null)
+  const [connectionError, setConnectionError] = useState('')
   const [selected, setSelected] = useState('crm')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -34,9 +38,10 @@ export default function FacebookLeadsPage() {
 
   useEffect(() => {
     let active = true
+    setConnectionError('')
     apiGet('/facebook-sheet/tabs')
       .then(result => { if (active) setConnection(result) })
-      .catch(err => { if (active) setConnection({ configured: false, tabs: [], issues: [err.message] }) })
+      .catch(err => { if (active) { setConnection(null); setConnectionError(connectionErrorMessage(err)) } })
     return () => { active = false }
   }, [reload])
 
@@ -49,7 +54,7 @@ export default function FacebookLeadsPage() {
       const path = selected === 'crm' ? `/facebook-sheet/crm?${query}` : `/facebook-sheet/tabs/${selected}?${query}`
       apiGet(path)
         .then(result => { if (active) setData(result) })
-        .catch(err => { if (active) { setData(null); setError(err.message) } })
+        .catch(err => { if (active) { setData(null); setError(connectionErrorMessage(err)) } })
         .finally(() => { if (active) setLoading(false) })
     }, search ? 250 : 0)
     return () => { active = false; clearTimeout(timer) }
@@ -57,7 +62,7 @@ export default function FacebookLeadsPage() {
 
   const chooseTab = value => { setSelected(String(value)); setPage(1); setSearch(''); setData(null) }
   const refresh = () => { setReload(value => value + 1) }
-  const activeName = selected === 'crm' ? 'All CRM Facebook leads' : connection.tabs.find(tab => String(tab.gid) === selected)?.title || data?.tab?.title || 'Sheet tab'
+  const activeName = selected === 'crm' ? 'All CRM Facebook leads' : connection?.tabs?.find(tab => String(tab.gid) === selected)?.title || data?.tab?.title || 'Sheet tab'
   const total = data?.total || 0
   const pages = Math.max(1, Math.ceil(total / pageSize))
 
@@ -98,7 +103,10 @@ export default function FacebookLeadsPage() {
       </div>
     </div>
 
-    {!connection.configured && <div style={{ padding: 16, marginBottom: 18, borderRadius: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: 'var(--text-primary)' }}>
+    {connectionError && <div style={{ padding: 16, marginBottom: 18, borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', color: 'var(--text-primary)' }}>
+      <strong>CRM server connection failed.</strong> {connectionError}
+    </div>}
+    {connection && !connection.configured && <div style={{ padding: 16, marginBottom: 18, borderRadius: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: 'var(--text-primary)' }}>
       <strong>Spreadsheet connection needs setup.</strong> The CRM server needs its read-only Google service account credentials and Viewer access to the workbook. Existing CRM Facebook leads remain available below.
       {connection.issues?.length > 0 && <div style={{ fontSize: 12, marginTop: 7 }}>{connection.issues.join(' · ')}</div>}
     </div>}
@@ -108,7 +116,7 @@ export default function FacebookLeadsPage() {
         <label className="form-label" htmlFor="facebook-tab">Spreadsheet tab</label>
         <ThemeSelect id="facebook-tab" className="input-field" value={selected} onChange={event => chooseTab(event.target.value)}>
           <option value="crm">All CRM Facebook leads</option>
-          {connection.tabs.map(tab => <option key={tab.gid} value={tab.gid}>{tab.title}</option>)}
+          {connection?.tabs?.map(tab => <option key={tab.gid} value={tab.gid}>{tab.title}</option>)}
         </ThemeSelect>
       </div>
       <div style={{ position: 'relative', flex: '1 1 250px', maxWidth: 360 }}>

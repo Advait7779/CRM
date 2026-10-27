@@ -18,6 +18,8 @@ The linked **Allinone Leads - Oct'26** tab (gid `1497736270`) remains on the aut
 4. Deploy the CRM and apply migrations `20261027_facebook_lead_sync` and `20261027_facebook_lead_tabs` through the normal server start or `npm run migrate --prefix server`. Restart the server. A first read of the automatic tab starts about 15 seconds later; check the server logs for the import count.
 5. Open **Facebook Leads** in the sidebar. Confirm that the tab picker lists the workbook's tabs. Select a tab to inspect it; use **Sync tab into CRM** only for a mapped Meta lead tab. The initial October source tab contained 41 leads when inspected on 27 October 2026 (29 `fb`, 12 `ig`), so its first import should be close to 41 unless rows were added, deleted, or invalid.
 
+If the browser reports `404 API endpoint not found` for `/api/facebook-sheet/tabs`, the frontend is calling an API deployment that does not have the new routes. Redeploy the API server from the same commit as the frontend, including both Facebook migrations. This 404 occurs before any Google Sheets credential check. Once the route responds, a missing credential or workbook Viewer grant will produce a separate configuration or Google access error. In a Coolify Compose deployment, the `FACEBOOK_SHEET_*` variables must be passed through `docker-compose.coolify.yml`; put their values in Coolify environment settings and redeploy both services.
+
 ## Data handling
 
 - `id` is stored uniquely as `facebookLeadId`; rescans do not duplicate leads or reset status and assignment.
