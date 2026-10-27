@@ -245,6 +245,7 @@ model Leads {
   facebookSubmittedAt DateTime?        @db.Timestamptz(6)
   facebookPlatform    String?          @db.VarChar(20)
   facebookPayload     Json?
+  FacebookLeadTabs    FacebookLeadTabs[]
   convertedCustomerId Int?
   createdAt           DateTime           @db.Timestamptz(6)
   updatedAt           DateTime           @db.Timestamptz(6)
@@ -258,6 +259,20 @@ model Leads {
   @@index([websiteSubmittedAt], map: "leads_website_submitted_at")
   @@index([facebookSubmittedAt], map: "leads_facebook_submitted_at")
   @@index([exec, justdialProduct], map: "leads_assignee_product")
+}
+
+model FacebookLeadTabs {
+  id             Int      @id @default(autoincrement())
+  leadId         Int
+  spreadsheetId  String   @db.VarChar(255)
+  sheetGid       Int
+  externalLeadId String   @db.VarChar(255)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  Leads          Leads    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([spreadsheetId, sheetGid, externalLeadId], map: "facebook_lead_tabs_source_unique")
+  @@index([leadId], map: "facebook_lead_tabs_lead_id")
+  @@index([spreadsheetId, sheetGid], map: "facebook_lead_tabs_sheet")
 }
 
 model Notifications {

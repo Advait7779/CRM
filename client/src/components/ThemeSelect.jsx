@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 
-export default function ThemeSelect({ value, onChange, children, disabled = false, className = "", style = {}, menuMinWidth = 150 }) {
+export default function ThemeSelect({ id, value, onChange, children, disabled = false, className = "", style = {}, menuMinWidth = 150 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, openUpward: false })
   const buttonRef = useRef(null)
@@ -120,6 +120,7 @@ export default function ThemeSelect({ value, onChange, children, disabled = fals
       }}
     >
       <button
+        id={id}
         ref={buttonRef}
         type="button"
         disabled={disabled}

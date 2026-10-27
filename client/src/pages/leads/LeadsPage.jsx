@@ -1,6 +1,7 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { apiDownload, apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import ThemeSelect from '../../components/ThemeSelect'
@@ -157,13 +158,14 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, syst
 }
 
 export default function LeadsPage() {
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const isAdmin = ['super_admin', 'director'].includes(user?.role)
   const [productOptions, setProductOptions] = useState([])
   const [systemUsers, setSystemUsers] = useState([])
   const [leads, setLeads]         = useState([])
   const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
+  const [search, setSearch]       = useState(() => searchParams.get('search') || '')
   const [selectedGroup, setSelectedGroup] = useState('All')
   const [modal, setModal]         = useState(null) // null | { lead, isNew }
   const [confirmConvertLead, setConfirmConvertLead] = useState(null)

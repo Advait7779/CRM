@@ -9,6 +9,7 @@ import LoginPage from './pages/auth/LoginPage'
 
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'))
 const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'))
+const FacebookLeadsPage = lazy(() => import('./pages/leads/FacebookLeadsPage'))
 const CustomersPage = lazy(() => import('./pages/customers/CustomersPage'))
 const CustomerDetail = lazy(() => import('./pages/customers/CustomerDetail'))
 const InstallationsPage = lazy(() => import('./pages/installations/InstallationsPage'))
@@ -44,6 +45,7 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
         <Route path="leads" element={<LeadsPage />} />
+        <Route path="facebook-leads" element={<FacebookLeadsPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="customers/:id" element={<CustomerDetail />} />
         <Route path="quotations" element={<Navigate to="/customers" replace />} />

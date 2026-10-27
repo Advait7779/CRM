@@ -15,6 +15,7 @@ const { connectDB, prisma } = require('./config/prisma');
 const { jsonReplacer } = require('./utils/prismaData');
 const apiRouter = require('./routes/api');
 const { createJustdialRouter } = require('./routes/justdial');
+const { createFacebookSheetRouter } = require('./routes/facebookSheet');
 const { startWebsiteSheetSync } = require('./services/websiteSheetSync');
 const { startFacebookSheetSync } = require('./services/facebookSheetSync');
 const { startScheduler } = require('./services/scheduler');
@@ -82,6 +83,7 @@ app.use('/api', (req, res, next) => {
   return apiLimiter(req, res, next);
 });
 
+app.use('/api/facebook-sheet', createFacebookSheetRouter(prisma));
 app.use('/api', apiRouter);
 
 app.get('/health/live', (req, res) => {

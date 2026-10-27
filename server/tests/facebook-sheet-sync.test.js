@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { sheetConfig, configurationIssues, rowToLead, processFacebookSheetLeads } = require('../services/facebookSheetSync');
+const { sheetConfig, configurationIssues, analyzeFacebookTab, rowToLead, processFacebookSheetLeads } = require('../services/facebookSheetSync');
 
 const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const env = {
@@ -53,19 +53,51 @@ test('mapping preserves source date and platform, normalizes phone and service',
 
 test('sync imports both platforms once and preserves CRM status on repeat scans', async () => {
   const saved = new Map();
+  const links = new Set();
   const prisma = { leads: {
     async findMany({ where }) { return [...saved.values()].filter(lead => where.facebookLeadId.in.includes(lead.facebookLeadId)); },
+    async createMany({ data }) {
+      let count = 0;
+      for (const lead of data) {
+        if (saved.has(lead.facebookLeadId)) continue;
+        saved.set(lead.facebookLeadId, { ...lead, id: saved.size + 1 });
+        count += 1;
+      }
+      return { count };
+    },
     async create({ data }) {
       assert.equal(data.source, 'Facebook');
       saved.set(data.facebookLeadId, { ...data, id: saved.size + 1 });
     }
-  } };
+  }, facebookLeadTabs: { async createMany({ data }) {
+    let count = 0;
+    for (const link of data) {
+      const key = `${link.sheetGid}:${link.externalLeadId}`;
+      if (!links.has(key)) { links.add(key); count += 1; }
+    }
+    return { count };
+  } } };
   const first = await processFacebookSheetLeads(prisma, { env, fetchImpl: fakeFetch });
   assert.equal(first.imported, 2);
+  assert.equal(first.mapped, 2);
   assert.deepEqual([...saved.keys()], ['l:101', 'l:102']);
   saved.get('l:102').status = 'Connected';
   const second = await processFacebookSheetLeads(prisma, { env, fetchImpl: fakeFetch });
   assert.equal(second.imported, 0);
+  assert.equal(second.mapped, 0);
+  assert.equal(saved.get('l:102').status, 'Connected');
+
+  const anotherTabFetch = async (url, options) => {
+    if (url.includes('?fields=')) return { ok: true, json: async () => ({ sheets: [
+      { properties: { sheetId: 44413567, title: "GPS-Oct'26", gridProperties: { columnCount: 26 } } }
+    ] }) };
+    if (url.includes('/values/')) return { ok: true, json: async () => ({ values: [headers, rows[1]] }) };
+    return fakeFetch(url, options);
+  };
+  const third = await processFacebookSheetLeads(prisma, { env, fetchImpl: anotherTabFetch, gid: 44413567 });
+  assert.equal(third.imported, 0);
+  assert.equal(third.mapped, 1);
+  assert.equal(saved.size, 2);
   assert.equal(saved.get('l:102').status, 'Connected');
 });
 
@@ -75,5 +107,22 @@ test('changed sheet headers stop the sync before any writes', async () => {
     if (url.includes('/values/')) return { ok: true, json: async () => ({ values: [['wrong', ...headers.slice(1)], ...rows.slice(1)] }) };
     return result;
   };
-  await assert.rejects(processFacebookSheetLeads({ leads: {} }, { env, fetchImpl: badFetch }), /header layout changed/);
+  await assert.rejects(processFacebookSheetLeads({ leads: {} }, { env, fetchImpl: badFetch }), /header layout/);
+});
+
+test('different Meta tab layouts map safely while non-sales and empty tabs stay read-only', () => {
+  const gpsHeader = [...headers.slice(0, 12), 'are_you_looking_to_buy_gps_tracking_device?', 'for_which_tracking_device_you_are_looking_to_buy?', 'full_name', 'phone_number', 'city', 'lead_status'];
+  const gpsRow = [...rows[1].slice(0, 12), 'yes', 'four_wheeler_tracking_device', 'GPS customer', 'p:+919000000003', 'Pune', 'CREATED'];
+  const gps = analyzeFacebookTab({ gid: 44413567, title: "GPS-Oct'26", values: [gpsHeader, gpsRow] });
+  assert.equal(gps.importable, true);
+  assert.equal(rowToLead(gps.headers, gps.rows[0].values, gps).service, 'GPS Tracking');
+  assert.equal(rowToLead(gps.headers, gps.rows[0].values, gps).name, 'GPS customer');
+
+  const headerless = analyzeFacebookTab({ gid: 1146694168, title: 'AI Kalyan', values: [rows[1].slice(0, 18)] });
+  assert.equal(headerless.importable, true);
+  assert.equal(headerless.rows[0].rowNumber, 1);
+
+  const job = analyzeFacebookTab({ gid: 1248816267, title: 'GPS Installation Job', values: [gpsHeader, gpsRow] });
+  assert.equal(job.importable, false);
+  assert.equal(analyzeFacebookTab({ gid: 2099327806, title: 'Sheet20', values: [] }).kind, 'empty');
 });

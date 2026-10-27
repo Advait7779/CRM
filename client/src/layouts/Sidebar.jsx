@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, UserCheck, Wrench, CreditCard,
   RefreshCw, Package, UserCog,
   CheckSquare, Calendar, ChevronDown, ChevronRight,
-  Shield, X, MessageSquare, ClipboardCheck
+  Shield, X, MessageSquare, ClipboardCheck, TableProperties
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { path: '/calendar',  icon: Calendar,        label: 'Calendar',       color: '#ef4444' },
   { path: '/chat',      icon: MessageSquare,   label: 'Chat',           color: '#10b981', isChat: true },
   { path: '/leads',     icon: Users,           label: 'Leads',          color: '#6366f1' },
+  { path: '/facebook-leads', icon: TableProperties, label: 'Facebook Leads', color: '#3b82f6' },
   { path: '/customers', icon: UserCheck,       label: 'Customers',      color: '#10b981' },
   { path: '/installations', icon: Wrench,          label: 'Installations',  color: '#8b5cf6' },
   { path: '/renewals',      icon: RefreshCw,       label: 'Renewals',       color: '#ec4899' },
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
 
 const PATH_ROLES = {
   '/leads': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
+  '/facebook-leads': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
   '/customers': ['super_admin', 'director', 'sales_manager', 'sales_executive'],
   '/installations': ['super_admin', 'director', 'installation_manager', 'gps_installer', 'cctv_technician', 'website_developer'],
   '/renewals': ['super_admin', 'director', 'sales_manager', 'sales_executive', 'accounts'],
