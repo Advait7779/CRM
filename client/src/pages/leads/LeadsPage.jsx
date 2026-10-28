@@ -12,6 +12,7 @@ import { LEAD_GROUPS, getLeadDate } from './leadData'
 import { localDateString } from '../../utils/date'
 
 const ACTION_STATUSES = [
+  'New',
   'Connected',
   'Future Prospect',
   'Fake Enquiry',
@@ -20,7 +21,7 @@ const ACTION_STATUSES = [
   'Follow-Up Required',
   "Didn't Answered"
 ]
-const LEAD_STATUSES = ['New', ...ACTION_STATUSES]
+const LEAD_STATUSES = ACTION_STATUSES
 const LEAD_SOURCES  = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial']
 const SERVICES      = ['GPS Tracking', 'CCTV', 'Website Design', 'SMS Package', 'RCS Messaging', 'Voice Package', 'Digital Marketing']
 

@@ -17,7 +17,7 @@ const formatDate = value => {
   return date && !Number.isNaN(date.getTime()) ? dateFormatter.format(date) : '—'
 }
 const text = value => String(value ?? '')
-const ACTION_STATUSES = ['Connected', 'Future Prospect', 'Fake Enquiry', 'Interested',
+const ACTION_STATUSES = ['New', 'Connected', 'Future Prospect', 'Fake Enquiry', 'Interested',
   'Not Interested', 'Follow-Up Required', "Didn't Answered"]
 const STATUS_COLOR = {
   New: '#60a5fa', Connected: '#6366f1', 'Future Prospect': '#8b5cf6',
