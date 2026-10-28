@@ -28,6 +28,8 @@ The Apps Script endpoint accepts only secret-authenticated POST requests for lis
 
 After updating the CRM server, replace the existing Apps Script project's `Code.gs` with the current [`server/googleAppsScriptFacebookLeads.gs`](server/googleAppsScriptFacebookLeads.gs), save, then choose **Deploy → Manage deployments → Edit → New version → Deploy**. Keep the same Script Property and web app URL. The updated script lists tabs without scanning every tab for its row count and reads up to 1000 rows per request. The CRM remains compatible with the earlier 250-row script until you deploy the new version. The browser remembers the tab names for quick return visits; the server briefly caches tab data, and **Refresh** requests a new copy.
 
+The server also starts warming its tab cache after startup and when someone opens the tab picker. It reads two tabs at a time to avoid a burst of Apps Script requests. A tab that has already been warmed opens from memory; older cached rows are shown immediately while a fresh copy loads in the background. A tab opened before its first read finishes still waits for Google Sheets. **Refresh** waits for a live copy.
+
 ## Alternative: service account
 
 If your organization permits JSON keys, enable the Sheets API in a Google Cloud project, create a service account, share the workbook with its email as **Viewer**, and set `FACEBOOK_SHEET_CLIENT_EMAIL` and `FACEBOOK_SHEET_PRIVATE_KEY` in the CRM server environment. Both real PEM line breaks and escaped `\n` line breaks work. Do not set the Apps Script URL or secret if using this method. The Apps Script method avoids changing an organization-wide key creation policy.

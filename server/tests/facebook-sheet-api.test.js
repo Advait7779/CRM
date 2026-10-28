@@ -80,7 +80,7 @@ async function fakeFetch(url) {
 test('tab browsing respects sales permissions; only admins can sync mapped Meta tabs', async t => {
   const app = express();
   app.use(express.json());
-  app.use('/api/facebook-sheet', createFacebookSheetRouter(prisma, { env, fetchImpl: fakeFetch }));
+  app.use('/api/facebook-sheet', createFacebookSheetRouter(prisma, { env, fetchImpl: fakeFetch, prewarm: false }));
   app.use((error, _req, res, _next) => res.status(error.status || 500).json({ message: error.message }));
   const server = app.listen(0, '127.0.0.1');
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -130,4 +130,27 @@ test('tab browsing respects sales permissions; only admins can sync mapped Meta 
   const nameColumn = sheet.getRow(1).values.indexOf('full_name');
   assert.equal(sheet.getRow(2).getCell(nameColumn).value, 'WhatsApp customer');
   assert.equal(sheet.getRow(3).getCell(nameColumn).value, null);
+});
+
+test('opening the tab picker warms sheet rows before a tab is selected', async t => {
+  let reads = 0;
+  const warmFetch = async (url, options) => {
+    if (url.includes('/values/')) reads += 1;
+    return fakeFetch(url, options);
+  };
+  const app = express();
+  app.use('/api/facebook-sheet', createFacebookSheetRouter(prisma, { env, fetchImpl: warmFetch }));
+  app.use((error, _req, res, _next) => res.status(error.status || 500).json({ message: error.message }));
+  const server = app.listen(0, '127.0.0.1');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await new Promise(resolve => server.once('listening', resolve));
+  const token = jwt.sign({ id: 1, tokenVersion: 0 }, process.env.JWT_SECRET);
+  const request = path => fetch(`http://127.0.0.1:${server.address().port}/api/facebook-sheet${path}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  assert.equal((await request('/tabs')).status, 200);
+  for (let attempt = 0; reads < 2 && attempt < 20; attempt += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reads, 2);
+  assert.equal((await request('/tabs/1497736270')).status, 200);
+  assert.equal(reads, 2);
 });

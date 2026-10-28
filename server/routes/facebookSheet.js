@@ -57,26 +57,71 @@ async function visibleTabRows(prisma, user, tab) {
   });
 }
 
-function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetch } = {}) {
+function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetch, prewarm = true } = {}) {
   const router = express.Router();
   const tabCache = new Map();
-  const cacheDurationMs = 10 * 60_000;
-  const maxCachedTabs = 5;
-  async function getTab(gid, refresh = false) {
-    if (refresh) tabCache.delete(gid);
+  const cacheDurationMs = 5 * 60_000;
+  const maxCachedTabs = 30;
+  const warmQueue = [];
+  const queued = new Set();
+  let activeWarmReads = 0;
+  async function readLiveTab(gid) {
     const cached = tabCache.get(gid);
-    if (cached && (cached.expiresAt > Date.now() || cached.pending)) return cached.pending || cached.tab;
-    const pending = readFacebookTab(sheetConfig(env), gid, fetchImpl).then(analyzeFacebookTab);
-    tabCache.set(gid, { pending });
-    while (tabCache.size > maxCachedTabs) tabCache.delete(tabCache.keys().next().value);
+    if (cached?.pending) return cached.pending;
+    const pending = readFacebookTab(sheetConfig(env), gid, fetchImpl).then(analyzeFacebookTab)
+      .then(tab => ({ ...tab, fetchedAt: new Date().toISOString() }));
+    tabCache.set(gid, { ...cached, pending });
     try {
       const tab = await pending;
-      if (tabCache.get(gid)?.pending === pending) tabCache.set(gid, { tab, expiresAt: Date.now() + cacheDurationMs });
+      if (tabCache.get(gid)?.pending === pending) {
+        tabCache.delete(gid);
+        tabCache.set(gid, { tab, expiresAt: Date.now() + cacheDurationMs });
+        while (tabCache.size > maxCachedTabs) tabCache.delete(tabCache.keys().next().value);
+      }
       return tab;
     } catch (error) {
-      if (tabCache.get(gid)?.pending === pending) tabCache.delete(gid);
+      if (tabCache.get(gid)?.pending === pending) {
+        if (cached?.tab) tabCache.set(gid, cached);
+        else tabCache.delete(gid);
+      }
       throw error;
     }
+  }
+  async function getTab(gid, refresh = false) {
+    const cached = tabCache.get(gid);
+    if (!refresh && cached?.tab) {
+      if (cached.expiresAt <= Date.now() && !cached.pending) {
+        readLiveTab(gid).catch(error => console.error('Facebook sheet background refresh failed:', error.message));
+      }
+      return cached.tab;
+    }
+    return readLiveTab(gid);
+  }
+  function drainWarmQueue() {
+    while (activeWarmReads < 2 && warmQueue.length) {
+      const gid = warmQueue.shift();
+      queued.delete(gid);
+      if (tabCache.get(gid)?.tab || tabCache.get(gid)?.pending) continue;
+      activeWarmReads += 1;
+      getTab(gid).catch(error => console.error('Facebook sheet prefetch failed:', error.message))
+        .finally(() => { activeWarmReads -= 1; drainWarmQueue(); });
+    }
+  }
+  function prewarmTabs(tabs) {
+    if (!prewarm) return;
+    for (const { gid } of tabs) {
+      if (tabCache.has(gid) || queued.has(gid)) continue;
+      queued.add(gid);
+      warmQueue.push(gid);
+    }
+    drainWarmQueue();
+  }
+  if (prewarm && !configurationIssues(sheetConfig(env)).length) {
+    const startupWarm = setTimeout(() => {
+      listFacebookTabs(sheetConfig(env), fetchImpl).then(prewarmTabs)
+        .catch(error => console.error('Facebook sheet prefetch setup failed:', error.message));
+    }, 1000);
+    startupWarm.unref?.();
   }
   router.use(authMiddleware, checkRole(SALES));
 
@@ -86,6 +131,7 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     if (issues.length) return res.json({ configured: false, tabs: [], issues });
     const tabs = await listFacebookTabs(config, fetchImpl, req.query.refresh === '1');
     res.json({ configured: true, tabs });
+    setImmediate(() => prewarmTabs(tabs));
   }));
 
   router.get('/crm', asyncHandler(async (req, res) => {
@@ -142,7 +188,7 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     const mappedCount = rows.filter(row => row.crm).length;
     res.json({ tab: { gid: tab.gid, title: tab.title, kind: tab.kind, importable: tab.importable, reason: tab.reason },
       headers: tab.headers, rows: visible.slice(skip, skip + pageSize), total: visible.length,
-      mappedCount, page, pageSize, fetchedAt: new Date().toISOString() });
+      mappedCount, page, pageSize, fetchedAt: tab.fetchedAt });
   }));
 
   router.post('/tabs/:gid/sync', checkRole(ADMIN), asyncHandler(async (req, res) => {
