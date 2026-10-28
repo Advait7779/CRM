@@ -64,6 +64,7 @@ const metaRows = [metaHeader,
   ['l:202', '2026-10-26T21:04:23+05:30', '', '', '', '', '', '', '', '', 'false', 'fb', 'sms_marketing', 'SMS customer', 'p:+919000000002', '', 'Mumbai', 'CREATED']
 ];
 const otherRows = [['ID', 'Name', 'Phone'], ['42', 'Website customer', '9000000000']];
+let sheetReads = 0;
 async function fakeFetch(url) {
   if (url === 'https://oauth2.googleapis.com/token') return { ok: true, json: async () => ({ access_token: 'test-token', expires_in: 3600 }) };
   if (url.includes('?fields=')) return { ok: true, json: async () => ({ sheets: [
@@ -71,6 +72,7 @@ async function fakeFetch(url) {
     { properties: { sheetId: 590930498, title: 'Website Cms', index: 1, gridProperties: { columnCount: 26 } } }
   ] }) };
   const decoded = decodeURIComponent(url);
+  sheetReads += 1;
   return { ok: true, json: async () => ({ values: decoded.includes('Website Cms') ? otherRows : metaRows }) };
 }
 
@@ -97,6 +99,11 @@ test('tab browsing respects sales permissions; only admins can sync mapped Meta 
   assert.equal(meta.status, 200);
   assert.equal(meta.body.total, 1);
   assert.equal(meta.body.rows[0].lead.name, 'WhatsApp customer');
+  const firstReadCount = sheetReads;
+  assert.equal((await request(2, '/tabs/1497736270?page=2')).status, 200);
+  assert.equal(sheetReads, firstReadCount);
+  assert.equal((await request(2, '/tabs/1497736270?refresh=1')).status, 200);
+  assert.equal(sheetReads, firstReadCount + 1);
   assert.equal((await request(2, '/tabs/590930498')).status, 403);
   assert.equal((await request(1, '/tabs/590930498')).body.total, 1);
   assert.equal((await request(2, '/tabs/1497736270/sync', 'POST')).status, 403);

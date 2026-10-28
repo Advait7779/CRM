@@ -75,6 +75,33 @@ test('Apps Script connection lists tabs and reads paged rows without a service a
   }), /invalid tab rows/);
 });
 
+test('Apps Script tab chunks are fetched concurrently and kept in sheet order', async () => {
+  const config = sheetConfig({
+    FACEBOOK_SHEET_WEBHOOK_URL: 'https://script.google.com/macros/s/test-deployment/exec',
+    FACEBOOK_SHEET_READ_SECRET: 'test-facebook-script-secret-at-least-32-characters'
+  });
+  let active = 0;
+  let peak = 0;
+  const scriptFetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    if (body.action === 'listTabs') return { ok: true, json: async () => ({ success: true, tabs: [
+      { gid: 1497736270, title: 'Large tab', index: 0, rowCount: 751, columnCount: 1 }
+    ] }) };
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise(resolve => setImmediate(resolve));
+    active -= 1;
+    const count = Math.min(250, 752 - body.startRow);
+    const values = Array.from({ length: count }, (_, index) => [String(body.startRow + index)]);
+    return { ok: true, json: async () => ({ success: true, values,
+      nextRow: body.startRow + count, hasMore: body.startRow + count <= 751 }) };
+  };
+  const tab = await readFacebookTab(config, 1497736270, scriptFetch);
+  assert.equal(peak, 4);
+  assert.equal(tab.values.length, 751);
+  assert.deepEqual(tab.values.map(row => Number(row[0])), Array.from({ length: 751 }, (_, index) => index + 1));
+});
+
 test('mapping preserves source date and platform, normalizes phone and service', () => {
   const lead = rowToLead(headers, rows[1]);
   assert.equal(lead.facebookLeadId, 'l:102');

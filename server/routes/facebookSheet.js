@@ -59,6 +59,25 @@ async function visibleTabRows(prisma, user, tab) {
 
 function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetch } = {}) {
   const router = express.Router();
+  const tabCache = new Map();
+  const cacheDurationMs = 60_000;
+  const maxCachedTabs = 5;
+  async function getTab(gid, refresh = false) {
+    if (refresh) tabCache.delete(gid);
+    const cached = tabCache.get(gid);
+    if (cached && (cached.expiresAt > Date.now() || cached.pending)) return cached.pending || cached.tab;
+    const pending = readFacebookTab(sheetConfig(env), gid, fetchImpl).then(analyzeFacebookTab);
+    tabCache.set(gid, { pending });
+    while (tabCache.size > maxCachedTabs) tabCache.delete(tabCache.keys().next().value);
+    try {
+      const tab = await pending;
+      if (tabCache.get(gid)?.pending === pending) tabCache.set(gid, { tab, expiresAt: Date.now() + cacheDurationMs });
+      return tab;
+    } catch (error) {
+      if (tabCache.get(gid)?.pending === pending) tabCache.delete(gid);
+      throw error;
+    }
+  }
   router.use(authMiddleware, checkRole(SALES));
 
   router.get('/tabs', asyncHandler(async (_req, res) => {
@@ -89,7 +108,7 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     const gid = gidFrom(req.params.gid);
     const config = sheetConfig(env);
     if (configurationIssues(config).length) return res.status(503).json({ message: 'Facebook sheet connection is not configured on the server.' });
-    const tab = analyzeFacebookTab(await readFacebookTab(config, gid, fetchImpl));
+    const tab = await getTab(gid);
     const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
     const available = await visibleTabRows(prisma, req.user, tab);
     const rows = search ? available.filter(row => [...row.values, row.crm?.status, row.crm?.exec]
@@ -114,7 +133,7 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     const gid = gidFrom(req.params.gid);
     const config = sheetConfig(env);
     if (configurationIssues(config).length) return res.status(503).json({ message: 'Facebook sheet connection is not configured on the server.' });
-    const tab = analyzeFacebookTab(await readFacebookTab(config, gid, fetchImpl));
+    const tab = await getTab(gid, req.query.refresh === '1');
     const rows = await visibleTabRows(prisma, req.user, tab);
     const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
     const visible = search ? rows.filter(row => [...row.values, row.crm?.status, row.crm?.exec]

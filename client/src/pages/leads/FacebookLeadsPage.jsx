@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, RefreshCw, Search, TableProperties, ChevronLeft, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -35,6 +35,7 @@ export default function FacebookLeadsPage() {
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState('')
+  const refreshNextRequest = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -51,6 +52,8 @@ export default function FacebookLeadsPage() {
     setError('')
     const timer = setTimeout(() => {
       const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), search: search.trim() })
+      if (refreshNextRequest.current && selected !== 'crm') query.set('refresh', '1')
+      refreshNextRequest.current = false
       const path = selected === 'crm' ? `/facebook-sheet/crm?${query}` : `/facebook-sheet/tabs/${selected}?${query}`
       apiGet(path)
         .then(result => { if (active) setData(result) })
@@ -61,7 +64,7 @@ export default function FacebookLeadsPage() {
   }, [selected, page, pageSize, search, reload])
 
   const chooseTab = value => { setSelected(String(value)); setPage(1); setSearch(''); setData(null) }
-  const refresh = () => { setReload(value => value + 1) }
+  const refresh = () => { refreshNextRequest.current = true; setReload(value => value + 1) }
   const activeName = selected === 'crm' ? 'All CRM Facebook leads' : connection?.tabs?.find(tab => String(tab.gid) === selected)?.title || data?.tab?.title || 'Sheet tab'
   const total = data?.total || 0
   const pages = Math.max(1, Math.ceil(total / pageSize))

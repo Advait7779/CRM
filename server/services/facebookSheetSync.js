@@ -24,6 +24,8 @@ const SERVICE_FIELDS = [
   'are_you_looking_for_a_new_cctv_device_or_to_repair_cctv_device??', 'requirement_details?'
 ];
 const MACHINE_FIELDS = new Set(['processing_status', 'whatsapp_status', 'sms_status', 'rcs_status', 'email_status', 'voice_status', 'error_message', 'processed_at']);
+const BRIDGE_PAGE_SIZE = 250;
+const BRIDGE_CONCURRENCY = 4;
 let cachedToken = null;
 
 function sheetConfig(env = process.env) {
@@ -140,17 +142,32 @@ async function readFacebookTab(config, gid, fetchImpl = fetch) {
   const tab = tabs.find(item => item.gid === gid);
   if (!tab) { const error = new Error('Spreadsheet tab not found.'); error.status = 404; throw error; }
   if (config.webhookUrl) {
-    const values = [];
-    let startRow = 1;
-    for (let page = 0; page < 1000; page += 1) {
-      const data = await bridgeRequest(config, 'readTab', { gid, startRow, limit: 250 }, fetchImpl);
-      if (!Array.isArray(data.values) || data.values.length > 250 || data.values.some(row =>
+    const readPage = async startRow => {
+      const data = await bridgeRequest(config, 'readTab', { gid, startRow, limit: BRIDGE_PAGE_SIZE }, fetchImpl);
+      if (!Array.isArray(data.values) || data.values.length > BRIDGE_PAGE_SIZE || data.values.some(row =>
         !Array.isArray(row) || row.length > 52 || row.some(value => typeof value !== 'string'))
         || typeof data.hasMore !== 'boolean'
         || !Number.isSafeInteger(data.nextRow) || data.nextRow !== startRow + data.values.length
         || (data.hasMore && !data.values.length)) {
         throw new Error('Facebook sheet Apps Script returned invalid tab rows.');
       }
+      return data;
+    };
+    const values = [];
+    let startRow = 1;
+    // listTabs reports the last populated row, so its chunks can be read concurrently.
+    // Keep reading if rows were added after that metadata request.
+    const knownRows = Number.isSafeInteger(tab.rowCount) ? Math.max(0, tab.rowCount) : 0;
+    for (let batch = 0; batch < 1000 && startRow <= knownRows; batch += 1) {
+      const starts = Array.from({ length: Math.min(BRIDGE_CONCURRENCY, Math.ceil((knownRows - startRow + 1) / BRIDGE_PAGE_SIZE)) },
+        (_, index) => startRow + index * BRIDGE_PAGE_SIZE);
+      const pages = await Promise.all(starts.map(readPage));
+      for (const page of pages) values.push(...page.values);
+      startRow = pages.at(-1).nextRow;
+      if (pages.at(-1).hasMore === false) return { ...tab, values };
+    }
+    for (let page = 0; page < 1000; page += 1) {
+      const data = await readPage(startRow);
       values.push(...data.values);
       if (!data.hasMore) return { ...tab, values };
       startRow = data.nextRow;
