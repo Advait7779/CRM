@@ -80,7 +80,10 @@ test('HTTP authorization and pagination regressions (isolated fixtures, no datab
   t.mock.method(prisma.tasks, 'update', async () => { writes++; throw new Error('Unexpected task write'); });
   t.mock.method(prisma.customers, 'findUnique', async () => ({ id: 1, name: 'Fixture', CustomerDocuments: [] }));
   for (const model of ['invoices', 'tickets', 'renewals', 'installations', 'quotations']) t.mock.method(prisma[model], 'findMany', async () => []);
-  t.mock.method(prisma, '$queryRaw', async () => Prisma.dmmf.datamodel.models.flatMap(model => model.fields.filter(field => field.kind !== 'object').map(field => ({ column_name: field.dbName || field.name, data_type: field.type === 'Decimal' ? 'numeric' : 'text' }))));
+  t.mock.method(prisma, '$queryRaw', async (strings) => {
+    assert.match(strings[0], /information_schema\.columns/, 'chat contact loading must not use an unverified raw query');
+    return Prisma.dmmf.datamodel.models.flatMap(model => model.fields.filter(field => field.kind !== 'object').map(field => ({ column_name: field.dbName || field.name, data_type: field.type === 'Decimal' ? 'numeric' : 'text' })));
+  });
 
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));

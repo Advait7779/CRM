@@ -2699,14 +2699,16 @@ router.get('/chat/users', authMiddleware, asyncHandler(async (req, res) => {
   });
   const unreadMap = new Map(unreadCounts.map((u) => [u.senderId, u._count.id]));
 
-  // Return the latest message per contact instead of loading the entire conversation history.
-  const recentMessages = await prisma.$queryRaw`
-    SELECT DISTINCT ON (CASE WHEN "senderId" = ${currentUserId} THEN "receiverId" ELSE "senderId" END)
-      "id", "message", "senderId", "receiverId", "read", "createdAt"
-    FROM "ChatMessages"
-    WHERE "groupId" IS NULL AND ("senderId" = ${currentUserId} OR "receiverId" = ${currentUserId})
-    ORDER BY CASE WHEN "senderId" = ${currentUserId} THEN "receiverId" ELSE "senderId" END, "createdAt" DESC, "id" DESC
-  `;
+  const recentMessages = await prisma.chatMessages.findMany({
+    where: {
+      groupId: null,
+      OR: [
+        { senderId: currentUserId },
+        { receiverId: currentUserId }
+      ]
+    },
+    orderBy: { createdAt: 'desc' }
+  });
 
   const lastMessageMap = new Map();
   for (const msg of recentMessages) {
