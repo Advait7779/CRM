@@ -3,7 +3,7 @@ import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
+import { apiGet, apiPost, apiPut } from '../../utils/api'
 import { Plus, Search, X, Check, Eye, Pencil, MessageSquare, PhoneCall } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
@@ -47,6 +47,10 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState([])
   const [systemUsers, setSystemUsers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [reload, setReload] = useState(0)
   const [search, setSearch] = useState('')
   const [serviceFilter, setServiceFilter] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
@@ -62,14 +66,23 @@ export default function CustomersPage() {
   const [greetingRequestId, setGreetingRequestId] = useState('')
 
   useEffect(() => {
-    apiGetAll('/customers')
-      .then(data => setCustomers(data))
-      .catch(err => toast.error('Failed to load customers: ' + err.message))
-      .finally(() => setLoading(false))
+    let active = true
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({ withTotal: '1', page: String(page), pageSize: String(pageSize), search: search.trim(), service: serviceFilter })
+      apiGet(`/customers?${query}`)
+        .then(data => { if (active) { setCustomers(data.rows); setTotal(data.total) } })
+        .catch(err => { if (active) toast.error('Failed to load customers: ' + err.message) })
+        .finally(() => { if (active) setLoading(false) })
+    }, search ? 250 : 0)
+    return () => { active = false; clearTimeout(timer) }
+  }, [page, pageSize, search, serviceFilter, reload])
+
+  useEffect(() => {
+    if (!modalOpen || systemUsers.length) return
     apiGet('/system-users')
       .then(data => setSystemUsers(Array.isArray(data) ? data : []))
       .catch(() => toast.error('Could not load system users for customer assignment.'))
-  }, [])
+  }, [modalOpen, systemUsers.length])
 
   useEffect(() => {
     if (!greetingCustomer) return
@@ -173,6 +186,7 @@ export default function CustomersPage() {
       setModalOpen(false)
       setEditingCustomer(null)
       setForm({ ...EMPTY_FORM })
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
@@ -187,12 +201,7 @@ export default function CustomersPage() {
     })
   }
 
-  const filtered = customers.filter(c => {
-    const srvList = getServicesArray(c.services)
-    const matchSearch = !search || c.name?.toLowerCase().includes(search.toLowerCase()) || c.contact?.toLowerCase().includes(search.toLowerCase()) || c.phone?.includes(search)
-    const matchSrv = serviceFilter === 'All' || srvList.includes(serviceFilter)
-    return matchSearch && matchSrv
-  })
+  const filtered = customers
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>Loading customers...</div>
 
@@ -237,14 +246,14 @@ export default function CustomersPage() {
             style={{ paddingLeft: 36, height: 38 }}
             placeholder="Search customers..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
           />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {['All', ...SERVICES].map(srv => (
             <button
               key={srv}
-              onClick={() => setServiceFilter(srv)}
+              onClick={() => { setServiceFilter(srv); setPage(1) }}
               style={{
                 padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s',
                 border: `1px solid ${serviceFilter === srv ? '#6366f1' : 'var(--border-subtle)'}`,
@@ -262,7 +271,7 @@ export default function CustomersPage() {
 
       {/* Table */}
       <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <PaginatedTable><table className="data-table" style={{ minWidth: 1050 }}>
+        <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 1050 }}>
           <thead>
             <tr>
               <th>Customer Name</th>

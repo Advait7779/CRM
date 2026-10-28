@@ -31,7 +31,8 @@ const leads = [
 function matchesWhere(lead, where = {}) {
   if (where.AND && !where.AND.every(clause => matchesWhere(lead, clause))) return false;
   if (where.OR && !where.OR.some(clause => matchesWhere(lead, clause))) return false;
-  if (where.id !== undefined && lead.id !== where.id) return false;
+  if (where.id !== undefined && typeof where.id !== 'object' && lead.id !== where.id) return false;
+  if (where.id?.in && !where.id.in.includes(lead.id)) return false;
   if (where.source !== undefined) {
     if (where.source && typeof where.source === 'object') {
       if (lead.source === where.source.not) return false;
@@ -45,8 +46,9 @@ const settings = new Map();
 const prisma = {
   users: { async findUnique({ where }) { return users.find(user => user.id === where.id) || null; } },
   leads: {
-    async findMany({ where }) {
-      return leads.filter(lead => matchesWhere(lead, where));
+    async findMany({ where, skip = 0, take }) {
+      const matched = leads.filter(lead => matchesWhere(lead, where));
+      return matched.slice(skip, take === undefined ? undefined : skip + take);
     },
     async findUnique({ where }) { return leads.find(lead => lead.id === where.id) || null; },
     async update({ where, data }) {
@@ -95,6 +97,10 @@ test('Leads API scopes products across sources regardless of executive while Set
     assert.equal(result.status, 200);
     assert.deepEqual(result.data.map(lead => lead.id), expectedIds);
   }
+  const page = await request(2, '/leads?withTotal=1&page=2&pageSize=2&group=CCTV');
+  assert.equal(page.status, 200);
+  assert.equal(page.data.total, 4);
+  assert.deepEqual(page.data.rows.map(lead => lead.id), [16, 17]);
   assert.equal((await request(2, '/leads/12')).status, 404);
   assert.equal((await request(2, '/leads/12', 'PUT', { status: 'Contacted' })).status, 404);
   assert.equal((await request(2, '/leads/11')).status, 200);

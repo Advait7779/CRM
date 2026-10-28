@@ -1,7 +1,7 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
-import { apiGetAll, apiPost, apiPut } from '../../utils/api'
+import { apiGet, apiPost, apiPut } from '../../utils/api'
 import { Plus, Search, CheckCircle2 } from 'lucide-react'
 import ThemeSelect from '../../components/ThemeSelect'
 import toast from 'react-hot-toast'
@@ -10,6 +10,11 @@ export default function TicketsPage() {
   const [tickets, setTickets] = useState([])
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [reload, setReload] = useState(0)
+  const [customersLoaded, setCustomersLoaded] = useState(false)
   const [search, setSearch] = useState('')
   const [filterPriority, setFilterPriority] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
@@ -18,15 +23,25 @@ export default function TicketsPage() {
   })
 
   useEffect(() => {
-    Promise.all([apiGetAll('/tickets'), apiGetAll('/customers')])
-      .then(([ticketRows, customerRows]) => {
-        setTickets(ticketRows)
-        setCustomers(customerRows)
-        if (customerRows[0]) setForm(current => ({ ...current, customerId: customerRows[0].id }))
-      })
-      .catch(err => toast.error('Failed to load tickets: ' + err.message))
-      .finally(() => setLoading(false))
-  }, [])
+    let active = true
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({ withTotal: '1', page: String(page), pageSize: String(pageSize), search: search.trim(), priority: filterPriority })
+      apiGet(`/tickets?${query}`)
+        .then(data => { if (active) { setTickets(data.rows); setTotal(data.total) } })
+        .catch(err => { if (active) toast.error('Failed to load tickets: ' + err.message) })
+        .finally(() => { if (active) setLoading(false) })
+    }, search ? 250 : 0)
+    return () => { active = false; clearTimeout(timer) }
+  }, [page, pageSize, search, filterPriority, reload])
+
+  useEffect(() => {
+    if (!modalOpen || customersLoaded) return
+    apiGet('/customers/options').then(rows => {
+      setCustomers(rows)
+      setCustomersLoaded(true)
+      if (rows[0]) setForm(current => ({ ...current, customerId: current.customerId || rows[0].id }))
+    }).catch(err => toast.error('Failed to load customers: ' + err.message))
+  }, [modalOpen, customersLoaded])
 
   const handleCreateTicket = async (e) => {
     e.preventDefault()
@@ -44,16 +59,13 @@ export default function TicketsPage() {
       toast.success('Support ticket created')
       setModalOpen(false)
       setForm({ customerId: customers[0]?.id || '', subject: '', service: 'GPS Offline', priority: 'High', desc: '' })
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
   }
 
-  const filtered = tickets.filter(t => {
-    const matchSearch = t.customer.toLowerCase().includes(search.toLowerCase()) || t.subject.toLowerCase().includes(search.toLowerCase())
-    const matchPrio = filterPriority === 'All' || t.priority === filterPriority
-    return matchSearch && matchPrio
-  })
+  const filtered = tickets
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>Loading tickets...</div>
 
@@ -78,14 +90,14 @@ export default function TicketsPage() {
             style={{ paddingLeft: 36, height: 38 }}
             placeholder="Search ticket subject..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
           />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {['All', 'High', 'Medium', 'Low'].map(prio => (
             <button
               key={prio}
-              onClick={() => setFilterPriority(prio)}
+              onClick={() => { setFilterPriority(prio); setPage(1) }}
               style={{
                 padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s',
                 border: `1px solid ${filterPriority === prio ? '#6366f1' : 'var(--border-subtle)'}`,
@@ -103,7 +115,7 @@ export default function TicketsPage() {
 
       {/* Table */}
       <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <PaginatedTable><table className="data-table" style={{ minWidth: 850 }}>
+        <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 850 }}>
           <thead>
             <tr>
               <th>Ticket ID</th>

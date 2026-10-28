@@ -1,7 +1,7 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect, useRef } from 'react'
-import { apiGetAll, apiPost } from '../../utils/api'
+import { apiGet, apiPost } from '../../utils/api'
 import { localDateString } from '../../utils/date'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
@@ -29,6 +29,11 @@ export default function QuotationsPage() {
   const [quotes, setQuotes] = useState([])
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [reload, setReload] = useState(0)
+  const [customersLoaded, setCustomersLoaded] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('All')
   const [modalOpen, setModalOpen] = useState(false)
@@ -42,15 +47,25 @@ export default function QuotationsPage() {
   })
 
   useEffect(() => {
-    Promise.all([apiGetAll('/quotations'), apiGetAll('/customers')])
-      .then(([quoteRows, customerRows]) => {
-        setQuotes(quoteRows)
-        setCustomers(customerRows)
-        if (customerRows[0]) setForm(current => ({ ...current, customerId: customerRows[0].id }))
-      })
-      .catch(err => toast.error('Failed to load quotations: ' + err.message))
-      .finally(() => setLoading(false))
-  }, [])
+    let active = true
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({ withTotal: '1', page: String(page), pageSize: String(pageSize), search: search.trim(), filterStatus })
+      apiGet(`/quotations?${query}`)
+        .then(data => { if (active) { setQuotes(data.rows); setTotal(data.total) } })
+        .catch(err => { if (active) toast.error('Failed to load quotations: ' + err.message) })
+        .finally(() => { if (active) setLoading(false) })
+    }, search ? 250 : 0)
+    return () => { active = false; clearTimeout(timer) }
+  }, [page, pageSize, search, filterStatus, reload])
+
+  useEffect(() => {
+    if (!modalOpen || customersLoaded) return
+    apiGet('/customers/options').then(rows => {
+      setCustomers(rows)
+      setCustomersLoaded(true)
+      if (rows[0]) setForm(current => ({ ...current, customerId: current.customerId || rows[0].id }))
+    }).catch(err => toast.error('Failed to load customers: ' + err.message))
+  }, [modalOpen, customersLoaded])
 
   const [previewPdf, setPreviewPdf] = useState(null)
 
@@ -106,6 +121,7 @@ export default function QuotationsPage() {
       setQuotes(prev => [created, ...prev])
       toast.success('Quotation generated successfully!')
       setModalOpen(false)
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
@@ -113,11 +129,7 @@ export default function QuotationsPage() {
 
   const { subtotal, gstAmount, grandTotal } = calculateTotals()
 
-  const filtered = quotes.filter(q => {
-    const matchSearch = q.customer.toLowerCase().includes(search.toLowerCase()) || q.id.includes(search)
-    const matchStatus = filterStatus === 'All' || q.status === filterStatus
-    return matchSearch && matchStatus
-  })
+  const filtered = quotes
 
   const printQuotation = () => {
     if (!quotationPreviewRef.current || !previewPdf) return
@@ -187,14 +199,14 @@ export default function QuotationsPage() {
             style={{ paddingLeft: 36, height: 38 }}
             placeholder="Search quotations..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
           />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {['All', 'Pending Approval', 'Approved', 'Converted', 'Rejected'].map(st => (
             <button
               key={st}
-              onClick={() => setFilterStatus(st)}
+              onClick={() => { setFilterStatus(st); setPage(1) }}
               style={{
                 padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s',
                 border: `1px solid ${filterStatus === st ? '#6366f1' : 'var(--border-subtle)'}`,
@@ -212,7 +224,7 @@ export default function QuotationsPage() {
 
       {/* Table */}
       <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
+        <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 800 }}>
           <thead>
             <tr>
               <th>Quote No</th>

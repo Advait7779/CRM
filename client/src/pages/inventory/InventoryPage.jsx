@@ -1,7 +1,7 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
-import { apiGetAll, apiPost } from '../../utils/api'
+import { apiGet, apiPost } from '../../utils/api'
 import ThemeSelect from '../../components/ThemeSelect'
 import { Plus, Search, ArrowRight, ArrowLeft, Barcode } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -12,7 +12,14 @@ const money = value => '\u20B9' + Number(value || 0).toLocaleString('en-IN', { m
 export default function InventoryPage() {
   const [stockList, setStockList] = useState([])
   const [customers, setCustomers] = useState([])
+  const [itemOptions, setItemOptions] = useState([])
+  const [itemsLoaded, setItemsLoaded] = useState(false)
+  const [customersLoaded, setCustomersLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [reload, setReload] = useState(0)
   const [activeTab, setActiveTab] = useState('stock')
   const [search, setSearch] = useState('')
   const [modalInOpen, setModalInOpen] = useState(false)
@@ -20,16 +27,36 @@ export default function InventoryPage() {
   const [modalNewItemOpen, setModalNewItemOpen] = useState(false)
 
   useEffect(() => {
-    Promise.all([apiGetAll('/inventory'), apiGetAll('/customers')])
-      .then(([items, customerRows]) => {
-        setStockList(items)
-        setCustomers(customerRows)
-        setTransIn(current => ({ ...current, itemId: current.itemId || items[0]?.id || '' }))
-        setTransOut(current => ({ ...current, itemId: current.itemId || items[0]?.id || '', customerId: current.customerId || customerRows[0]?.id || '' }))
-      })
-      .catch(err => toast.error('Failed to load inventory: ' + err.message))
-      .finally(() => setLoading(false))
-  }, [])
+    let active = true
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({ withTotal: '1', page: String(page), pageSize: String(pageSize), search: search.trim(), stockTab: activeTab })
+      apiGet(`/inventory?${query}`)
+        .then(data => { if (active) { setStockList(data.rows); setTotal(data.total) } })
+        .catch(err => { if (active) toast.error('Failed to load inventory: ' + err.message) })
+        .finally(() => { if (active) setLoading(false) })
+    }, search ? 250 : 0)
+    return () => { active = false; clearTimeout(timer) }
+  }, [page, pageSize, search, activeTab, reload])
+
+  useEffect(() => {
+    if ((!modalInOpen && !modalOutOpen) || itemsLoaded) return
+    apiGet('/inventory/options').then(items => {
+      setItemOptions(items)
+      setItemsLoaded(true)
+      setTransIn(current => ({ ...current, itemId: current.itemId || items[0]?.id || '' }))
+      setTransOut(current => ({ ...current, itemId: current.itemId || items[0]?.id || '' }))
+    }).catch(err => toast.error(err.message))
+  }, [modalInOpen, modalOutOpen, itemsLoaded])
+
+  useEffect(() => {
+    if (!modalOutOpen || customersLoaded) return
+    apiGet('/customers/options').then(rows => {
+      setCustomers(rows)
+      setCustomersLoaded(true)
+      setTransOut(current => ({ ...current, customerId: current.customerId || rows[0]?.id || '' }))
+    })
+      .catch(err => toast.error(err.message))
+  }, [modalOutOpen, customersLoaded])
 
   // Transaction & Item form states
   const [transIn, setTransIn] = useState({ itemId: '', qty: 0, price: '', vendor: '' })
@@ -56,6 +83,8 @@ export default function InventoryPage() {
       toast.success('Inventory item created successfully!')
       setModalNewItemOpen(false)
       setNewItemForm({ name: '', category: 'GPS Device', barcode: '', stock: 0, min: 10, price: 2500 })
+      setItemsLoaded(false)
+      setReload(value => value + 1)
     } catch (error) {
       toast.error(error.message)
     }
@@ -80,13 +109,15 @@ export default function InventoryPage() {
   const handleStockIn = async (e) => {
     e.preventDefault()
     if (transIn.qty <= 0) return toast.error('Please enter a valid quantity')
-    const item = stockList.find(s => s.id === Number(transIn.itemId))
+    const item = itemOptions.find(s => s.id === Number(transIn.itemId))
     if (!item) return toast.error('Item not found')
     try {
       const result = await apiPost(`/inventory/${item.id}/adjust`, { direction: 'IN', quantity: Number(transIn.qty), purpose: 'Purchase', reference: transIn.vendor })
       setStockList(prev => prev.map(s => s.id === item.id ? result.item : s))
       toast.success('Successfully added items to stock!')
       setModalInOpen(false)
+      setItemsLoaded(false)
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
@@ -95,7 +126,7 @@ export default function InventoryPage() {
   const handleStockOut = async (e) => {
     e.preventDefault()
     if (transOut.qty <= 0) return toast.error('Please enter a valid quantity')
-    const item = stockList.find(s => s.id === Number(transOut.itemId))
+    const item = itemOptions.find(s => s.id === Number(transOut.itemId))
     if (!item) return toast.error('Item not found')
     if (item.stock < transOut.qty) return toast.error('Insufficient stock in inventory!')
     try {
@@ -103,12 +134,14 @@ export default function InventoryPage() {
       setStockList(prev => prev.map(s => s.id === item.id ? result.item : s))
       toast.success('Stock checked out for job allocation!')
       setModalOutOpen(false)
+      setItemsLoaded(false)
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
   }
 
-  const filtered = stockList.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.category.toLowerCase().includes(search.toLowerCase()))
+  const filtered = stockList
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>Loading inventory...</div>
 
@@ -138,7 +171,7 @@ export default function InventoryPage() {
         ].map(t => (
           <button
             key={t.id}
-            onClick={() => setActiveTab(t.id)}
+            onClick={() => { setActiveTab(t.id); setPage(1) }}
             style={{
               padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all 0.2s', whiteSpace: 'nowrap',
               color: activeTab === t.id ? '#6366f1' : 'var(--text-secondary)',
@@ -159,13 +192,13 @@ export default function InventoryPage() {
           style={{ paddingLeft: 36, height: 38 }}
           placeholder="Search items, category or SKU..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
         />
       </div>
 
       {/* Table */}
       <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <PaginatedTable><table className="data-table" style={{ minWidth: 850 }}>
+        <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 850 }}>
           <thead>
             <tr>
               <th>Item Name</th>
@@ -179,9 +212,7 @@ export default function InventoryPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered
-              .filter(s => activeTab === 'stock' || s.status !== 'OK')
-              .map(s => (
+            {filtered.map(s => (
                 <tr key={s.id} style={{ background: s.status === 'Out of Stock' ? 'rgba(239, 68, 68, 0.04)' : s.status === 'Low Stock' ? 'rgba(245, 158, 11, 0.03)' : 'transparent' }}>
                   <td style={{ fontWeight: 600 }}>{s.name}</td>
                   <td>
@@ -224,7 +255,7 @@ export default function InventoryPage() {
                 <div className="form-group">
                   <label className="form-label">Select Item Catalog *</label>
                   <ThemeSelect className="input-field" value={transIn.itemId} onChange={e => setTransIn(t => ({ ...t, itemId: Number(e.target.value) }))}>
-                    {stockList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {itemOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </ThemeSelect>
                 </div>
                 <div className="form-group">
@@ -260,7 +291,7 @@ export default function InventoryPage() {
                 <div className="form-group">
                   <label className="form-label">Select Item Catalog *</label>
                   <ThemeSelect className="input-field" value={transOut.itemId} onChange={e => setTransOut(t => ({ ...t, itemId: Number(e.target.value) }))}>
-                    {stockList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {itemOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </ThemeSelect>
                 </div>
                 <div className="form-group">

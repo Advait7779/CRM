@@ -1,7 +1,7 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
-import { apiGetAll, apiGet, apiPost, apiPut } from '../../utils/api'
+import { apiGet, apiPost, apiPut } from '../../utils/api'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import { useAuth } from '../../context/AuthContext'
@@ -28,6 +28,11 @@ export default function TasksPage() {
   const [tasks, setTasks]       = useState([])
   const [assignees, setAssignees] = useState([])
   const [loading, setLoading]   = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [reload, setReload] = useState(0)
+  const [counts, setCounts] = useState({ Pending: 0, Ongoing: 0, Completed: 0, 'Not Completed': 0 })
   const [deptFilter, setDept]   = useState('All Departments')
   const [statusFilter, setStatus] = useState('All')
   const [modal, setModal]       = useState(false)
@@ -35,26 +40,30 @@ export default function TasksPage() {
   const isAdmin = ['super_admin', 'director', 'sales_manager', 'installation_manager'].includes(user?.role)
 
   useEffect(() => {
-    Promise.all([apiGetAll('/tasks'), ...(isAdmin ? [apiGet('/task-assignees')] : [Promise.resolve([])])])
-      .then(([taskRows, assigneeRows]) => {
-        setTasks(taskRows)
-        setAssignees(assigneeRows)
-      })
-      .catch(err => toast.error('Failed to load tasks: ' + err.message))
-      .finally(() => setLoading(false))
-  }, [isAdmin])
+    let active = true
+    const query = new URLSearchParams({ withTotal: '1', page: String(page), pageSize: String(pageSize), dept: deptFilter, status: statusFilter })
+    apiGet(`/tasks?${query}`)
+      .then(data => { if (active) { setTasks(data.rows); setTotal(data.total) } })
+      .catch(err => { if (active) toast.error('Failed to load tasks: ' + err.message) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [page, pageSize, deptFilter, statusFilter, reload])
 
-  const filtered = tasks.filter(t => {
-    const matchDept   = deptFilter === 'All Departments' || t.dept === deptFilter
-    const matchStatus = statusFilter === 'All' || t.status === statusFilter
-    return matchDept && matchStatus
-  })
+  useEffect(() => { apiGet('/tasks/summary').then(setCounts).catch(() => {}) }, [reload])
+
+  useEffect(() => {
+    if (!modal || !isAdmin || assignees.length) return
+    apiGet('/task-assignees').then(setAssignees).catch(err => toast.error(err.message))
+  }, [modal, isAdmin, assignees.length])
+
+  const filtered = tasks
 
   const updateStatus = async (id, newStatus) => {
     try {
       const updated = await apiPut(`/tasks/${id}/status`, { status: newStatus })
       setTasks(ts => ts.map(t => t.id === id ? { ...t, ...updated, status: newStatus } : t))
       toast.success('Task status updated')
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
@@ -69,13 +78,11 @@ export default function TasksPage() {
       toast.success('Task assigned')
       setModal(false)
       setForm({ ...EMPTY_FORM })
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
   }
-
-  const counts = { Pending: 0, Ongoing: 0, Completed: 0, 'Not Completed': 0 }
-  tasks.forEach(t => counts[t.status]++)
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>Loading tasks...</div>
 
@@ -96,13 +103,13 @@ export default function TasksPage() {
         {Object.entries(STATUS_CONFIG).map(([status, cfg]) => {
           const Icon = cfg.icon
           return (
-            <div key={status} className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setStatus(status === statusFilter ? 'All' : status)}>
+            <div key={status} className="stat-card" style={{ cursor: 'pointer' }} onClick={() => { setStatus(status === statusFilter ? 'All' : status); setPage(1) }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon size={20} style={{ color: cfg.color }} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: cfg.color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>{counts[status]}</div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: cfg.color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>{counts[status] ?? 0}</div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{status}</div>
                 </div>
               </div>
@@ -114,7 +121,7 @@ export default function TasksPage() {
       {/* Filters */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {DEPARTMENTS.map(d => (
-          <button key={d} onClick={() => setDept(d)} style={{
+          <button key={d} onClick={() => { setDept(d); setPage(1) }} style={{
             padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s',
             border: `1px solid ${deptFilter === d ? '#6366f1' : 'var(--border-subtle)'}`,
             background: deptFilter === d ? 'rgba(99,102,241,0.12)' : 'transparent',
@@ -126,7 +133,7 @@ export default function TasksPage() {
 
       {/* Tasks Table */}
       <div className="table-pagination-shell" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <PaginatedTable menuSpace><table className="data-table" style={{ minWidth: 720 }}>
+        <PaginatedTable menuSpace serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 720 }}>
           <thead>
             <tr>
               <th>SR.No.</th><th>Task</th><th>Department</th><th>Assigned To</th><th>Priority</th><th>Due Date</th><th>Status</th>

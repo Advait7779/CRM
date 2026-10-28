@@ -7,7 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { prisma, Prisma } = require('../config/prisma');
-const { currentDateOnly, prepareData, prismaId, toDateOnly } = require('../utils/prismaData');
+const { currentDateOnly, jsonReplacer, prepareData, prismaId, toDateOnly } = require('../utils/prismaData');
 const { authMiddleware, checkRole } = require('../middleware/auth');
 const { sendMultiChannelNotification } = require('../services/notificationService');
 const { ALL_WEBHOOK_SETTING_KEYS, GPS_RENEWAL_SMS_SETTING_KEY, sendSavedWebhookNotifications, sendNewLeadSmsNotification } = require('../services/savedWebhookNotifications');
@@ -194,6 +194,37 @@ const RESOURCE_CONFIG = {
     readRoles: [...SALES, ...FINANCE]
   }
 };
+
+function customerServiceList(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return [];
+  try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; }
+  catch { /* Older customer records use comma-separated services. */ }
+  return raw.split(',').map(service => service.trim()).filter(Boolean);
+}
+
+function listSearchWhere(routeName, query) {
+  const term = String(query.search || '').trim().slice(0, 200);
+  const contains = field => ({ [field]: { contains: term, mode: 'insensitive' } });
+  if (routeName === 'tasks') return {
+    ...(query.dept && query.dept !== 'All Departments' ? prepareData('tasks', { dept: query.dept }) : {}),
+    ...(query.status && query.status !== 'All' ? prepareData('tasks', { status: query.status }) : {})
+  };
+  if (routeName === 'tickets') return {
+    ...(term ? { OR: [contains('customer'), contains('subject')] } : {}),
+    ...(query.priority && query.priority !== 'All' ? { priority: query.priority } : {})
+  };
+  if (routeName === 'quotations') return {
+    ...(term ? { OR: [contains('customer'), { id: { contains: term } }] } : {}),
+    ...(query.filterStatus && query.filterStatus !== 'All' ? prepareData('quotations', { status: query.filterStatus }) : {})
+  };
+  if (routeName === 'inventory') return {
+    ...(term ? { OR: [contains('name'), contains('category')] } : {}),
+    ...(query.stockTab === 'low' ? { NOT: { status: 'OK' } } : {})
+  };
+  if (routeName === 'invoices' && query.outstanding === '1') return { NOT: { status: 'Paid' } };
+  return {};
+}
 
 function cleanBody(body, allowedFields) {
   return allowedFields.reduce((result, field) => {
@@ -700,13 +731,43 @@ function gpsRecordResponse(record) {
   });
 }
 
+const gpsRenewalWhere = { type: { startsWith: 'GPS', mode: 'insensitive' } };
+function matchesGpsRenewal(row, search, statusFilter = 'all') {
+  if (statusFilter === 'followUp' && !row.followUpDate) return false;
+  if (statusFilter === 'confirmed' && !row.confirmedAt) return false;
+  const q = String(search || '').trim().toLowerCase();
+  return !q || ['customer', 'contactNo', 'imeiNo', 'simNumber', 'vehicleNumber', 'nextDue', 'renewalDate', 'remarks']
+    .some((key) => String(row[key] || '').toLowerCase().includes(q));
+}
+
+router.get('/gps-renewals/summary', authMiddleware, checkRole([...SALES, ...FINANCE]), asyncHandler(async (_req, res) => {
+  const [total, followUp, confirmed] = await Promise.all([
+    prisma.renewals.count({ where: gpsRenewalWhere }),
+    prisma.renewals.count({ where: { ...gpsRenewalWhere, followUpDate: { not: null } } }),
+    prisma.renewals.count({ where: { ...gpsRenewalWhere, confirmedAt: { not: null } } })
+  ]);
+  res.json({ total, followUp, confirmed });
+}));
+
 router.get('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE]), asyncHandler(async (req, res) => {
-  const where = { type: { startsWith: 'GPS', mode: 'insensitive' } };
+  const search = String(req.query.search || '');
+  const statusFilter = String(req.query.statusFilter || 'all');
+  const where = {
+    ...gpsRenewalWhere,
+    ...(statusFilter === 'followUp' ? { followUpDate: { not: null } } : {}),
+    ...(statusFilter === 'confirmed' ? { confirmedAt: { not: null } } : {})
+  };
+  const paging = pagination(req.query);
+  if (search.trim()) {
+    const candidates = await prisma.renewals.findMany({ where, orderBy: [{ nextDue: 'asc' }, { id: 'asc' }], include: { Customers: { select: { phone: true } } } });
+    const matched = candidates.filter((row) => matchesGpsRenewal(row, search, statusFilter));
+    return sendPaginatedList(req, res, matched.slice(paging.skip, paging.skip + paging.take).map(gpsRecordResponse), async () => matched.length);
+  }
   const rows = await prisma.renewals.findMany({
     where,
     orderBy: [{ nextDue: 'asc' }, { id: 'asc' }],
     include: { Customers: { select: { phone: true } } },
-    ...pagination(req.query)
+    ...paging
   });
   await sendPaginatedList(req, res, rows.map(gpsRecordResponse), () => prisma.renewals.count({ where }));
 }));
@@ -743,6 +804,14 @@ router.delete('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE])
     return res.json({ message: 'No GPS renewals specified for deletion.', count: 0 });
   }
 
+  if (req.body?.filteredOnly === true) {
+    const search = String(req.body.search || '');
+    const statusFilter = String(req.body.statusFilter || 'all');
+    if (!search.trim()) return res.status(400).json({ message: 'Search is required for filtered deletion.' });
+    const candidates = await prisma.renewals.findMany({ where: gpsRenewalWhere });
+    ids = candidates.filter((row) => matchesGpsRenewal(row, search, statusFilter)).map((row) => row.id);
+    if (!ids.length) return res.json({ message: 'No GPS renewals matched the search.', count: 0 });
+  }
   const where = {
     type: { startsWith: 'GPS', mode: 'insensitive' },
     ...(ids && ids.length > 0 ? { id: { in: ids } } : {})
@@ -908,6 +977,53 @@ router.post('/gps-renewals/import', authMiddleware, checkRole([...SALES, ...FINA
   });
 }));
 
+router.get('/leads/summary', authMiddleware, checkRole(SALES), asyncHandler(async (req, res) => {
+  const access = leadAccessWhere(req.user);
+  const [total, won, newCount] = await Promise.all([
+    prisma.leads.count({ where: access }),
+    prisma.leads.count({ where: { ...access, status: 'Won' } }),
+    prisma.leads.count({ where: { ...access, status: 'New' } })
+  ]);
+  res.json({ total, won, new: newCount });
+}));
+
+router.get('/customers/options', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (_req, res) => {
+  res.json(await prisma.customers.findMany({ select: { id: true, name: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }));
+}));
+
+router.get('/tasks/summary', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
+  const where = MANAGEMENT.includes(req.user.role) ? {} : { assignedUserId: req.user.id };
+  const groups = await prisma.tasks.groupBy({ by: ['status'], where, _count: { id: true } });
+  res.json(Object.fromEntries(groups.map(group => [jsonReplacer('status', group.status), group._count.id])));
+}));
+
+router.get('/inventory/options', authMiddleware, checkRole([...OPERATIONS, ...MANAGEMENT]), asyncHandler(async (_req, res) => {
+  res.json(await prisma.inventories.findMany({ select: { id: true, name: true, stock: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }));
+}));
+
+router.get('/employees/options', authMiddleware, checkRole(ADMIN), asyncHandler(async (_req, res) => {
+  res.json(await prisma.employees.findMany({ select: { id: true, name: true, dept: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }] }));
+}));
+
+router.get('/leaves/summary', authMiddleware, checkRole(ADMIN), asyncHandler(async (_req, res) => {
+  res.json({ pending: await prisma.leaveRequests.count({ where: { status: 'Pending' } }) });
+}));
+
+router.get('/accounts/summary', authMiddleware, checkRole(FINANCE), asyncHandler(async (_req, res) => {
+  const [invoiced, received, outstanding] = await Promise.all([
+    prisma.$queryRaw`SELECT COALESCE(SUM("total"::numeric), 0)::text AS value FROM "Invoices"`,
+    prisma.$queryRaw`SELECT COALESCE(SUM("amount"::numeric), 0)::text AS value FROM "Payments"`,
+    prisma.$queryRaw`
+      SELECT COALESCE(SUM(GREATEST(i."total"::numeric - COALESCE(p.paid, 0), 0)), 0)::text AS value
+      FROM "Invoices" i
+      LEFT JOIN (SELECT "invoiceId", SUM("amount"::numeric) AS paid FROM "Payments" GROUP BY "invoiceId") p ON p."invoiceId" = i."id"
+      WHERE i."status" <> 'Paid'
+    `
+  ]);
+  res.json({ invoiced: Number(invoiced[0]?.value || 0), received: Number(received[0]?.value || 0),
+    outstanding: Number(outstanding[0]?.value || 0) });
+}));
+
 for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
   router.get(`/${routeName}`, authMiddleware, checkRole(config.readRoles), asyncHandler(async (req, res) => {
     const where = {};
@@ -928,19 +1044,51 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
           ];
         }
       }
+      if (['GPS', 'CCTV'].includes(req.query.type) && !where.type) where.type = req.query.type;
     }
     if (req.query.customer && config.fields.includes('customer')) where.customer = req.query.customer;
-    if (req.query.status) where.status = prepareData(config.model, { status: req.query.status }).status;
+    if (req.query.status && req.query.status !== 'All') where.status = prepareData(config.model, { status: req.query.status }).status;
+    Object.assign(where, listSearchWhere(routeName, req.query));
     const orderField = routeName === 'employees' ? 'name' : 'createdAt';
     const orderDirection = routeName === 'employees' ? 'asc' : 'desc';
+    const orderBy = [{ [orderField]: orderDirection }, { id: orderDirection }];
+    const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
+    const group = String(req.query.group || 'All');
+    const service = String(req.query.service || 'All');
+    if ((routeName === 'leads' && (search || group !== 'All')) || (routeName === 'customers' && (search || service !== 'All'))) {
+      const select = routeName === 'leads'
+        ? { id: true, name: true, phone: true, company: true, service: true, justdialProduct: true, source: true, websiteLeadId: true }
+        : { id: true, name: true, contact: true, phone: true, services: true };
+      const candidates = await prisma[config.model].findMany({ where, orderBy, select });
+      const matching = routeName === 'leads' ? filterLeads(candidates, group, search) : candidates.filter(customer => {
+        const matchesText = !search || [customer.name, customer.contact, customer.phone]
+          .some(value => String(value || '').toLowerCase().includes(search));
+        return matchesText && (service === 'All' || customerServiceList(customer.services).includes(service));
+      });
+      const { skip, take } = pagination(req.query);
+      const ids = matching.slice(skip, skip + take).map(record => record.id);
+      const records = ids.length ? await prisma[config.model].findMany({
+        where: { ...where, id: { in: ids } }, ...(await compatibilitySelect(config.model))
+      }) : [];
+      const rank = new Map(ids.map((id, index) => [id, index]));
+      records.sort((a, b) => rank.get(a.id) - rank.get(b.id));
+      const rows = await restoreLegacyDecimalFields(config.model, records);
+      return sendPaginatedList(req, res, rows, async () => matching.length);
+    }
     const records = await prisma[config.model].findMany({
       where,
-      orderBy: { [orderField]: orderDirection },
+      orderBy,
       ...pagination(req.query),
       ...(await compatibilitySelect(config.model))
     });
     const compatibleRecords = await restoreLegacyDecimalFields(config.model, records);
-    const rows = routeName === 'renewals' ? compatibleRecords.map(renewalWithComputedStatus) : compatibleRecords;
+    let rows = routeName === 'renewals' ? compatibleRecords.map(renewalWithComputedStatus) : compatibleRecords;
+    if (routeName === 'invoices' && rows.length) {
+      const sums = await prisma.payments.groupBy({ by: ['invoiceId'], where: { invoiceId: { in: rows.map(row => row.id) } },
+        _sum: { amount: true } });
+      const byInvoice = new Map(sums.map(item => [item.invoiceId, Number(item._sum.amount || 0)]));
+      rows = rows.map(row => ({ ...row, paidAmount: byInvoice.get(row.id) || 0 }));
+    }
     await sendPaginatedList(req, res, rows, () => prisma[config.model].count({ where }));
   }));
 
@@ -1434,6 +1582,21 @@ router.post('/renewals/:id/generate-invoice', authMiddleware, checkRole([...SALE
 }));
 
 router.get('/customers/:id/overview', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
+  if (req.query.summaryOnly === '1') {
+    const customer = await prisma.customers.findUnique({ where: { id: Number(req.params.id) } });
+    if (!customer) return res.status(404).json({ message: 'Customer not found.' });
+    const nameWhere = { customer: customer.name };
+    const canFinance = FINANCE.includes(req.user.role);
+    const canSales = SALES.includes(req.user.role);
+    const canTickets = [...SUPPORT, ...OPERATIONS].includes(req.user.role);
+    const [invoices, tickets, installations, quotations] = await Promise.all([
+      canFinance ? prisma.invoices.count({ where: nameWhere }) : 0,
+      canTickets ? prisma.tickets.count({ where: nameWhere }) : 0,
+      [...OPERATIONS, ...SALES, ...SUPPORT].includes(req.user.role) ? prisma.installations.count({ where: nameWhere }) : 0,
+      (canSales || canFinance) ? prisma.quotations.count({ where: nameWhere }) : 0
+    ]);
+    return res.json({ customer: { ...customer, documents: [] }, invoices: [], tickets: [], renewals: [], installations: [], quotations: [], counts: { invoices, tickets, installations, quotations } });
+  }
   const customerRecord = await prisma.customers.findUnique({
     where: { id: Number(req.params.id) },
     include: { CustomerDocuments: { orderBy: { createdAt: 'desc' } } }
@@ -1451,6 +1614,23 @@ router.get('/customers/:id/overview', authMiddleware, checkRole(ALL_STAFF), asyn
     (canSales || canFinance) ? prisma.quotations.findMany({ where: { customer: customer.name }, orderBy: { date: 'desc' }, take: 200 }) : []
   ]);
   res.json({ customer: { ...customer, documents }, invoices, tickets, renewals, installations, quotations });
+}));
+
+router.get('/customers/:id/related', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
+  const customer = await prisma.customers.findUnique({ where: { id: Number(req.params.id) }, select: { id: true, name: true } });
+  if (!customer) return res.status(404).json({ message: 'Customer not found.' });
+  const type = String(req.query.type || '');
+  const config = {
+    renewals: { model: 'renewals', allowed: SALES.includes(req.user.role) || FINANCE.includes(req.user.role), orderBy: [{ nextDue: 'asc' }, { id: 'asc' }] },
+    documents: { model: 'customerDocuments', allowed: true, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
+    invoices: { model: 'invoices', allowed: FINANCE.includes(req.user.role), orderBy: [{ date: 'desc' }, { id: 'desc' }] },
+    tickets: { model: 'tickets', allowed: [...SUPPORT, ...OPERATIONS].includes(req.user.role), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }
+  }[type];
+  if (!config) return res.status(400).json({ message: 'Invalid related records type.' });
+  if (!config.allowed) return sendPaginatedList(req, res, [], async () => 0);
+  const where = type === 'documents' ? { customerId: customer.id } : { customer: customer.name };
+  const rows = await prisma[config.model].findMany({ where, orderBy: config.orderBy, ...pagination(req.query) });
+  await sendPaginatedList(req, res, rows, () => prisma[config.model].count({ where }));
 }));
 
 router.put('/tasks/:id/status', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (req, res) => {
@@ -1598,11 +1778,12 @@ router.get('/my/hr', authMiddleware, checkRole(ALL_STAFF), asyncHandler(async (r
   if (!employee) return res.json({ linked: false, employee: null, attendance: [], leaves: [], documents: [], payroll: null });
   const period = String(req.query.period || currentDateOnly().slice(0, 7));
   const { start, end } = periodDetails(period);
+  const section = ['attendance', 'leave', 'documents', 'payslips'].includes(req.query.section) ? req.query.section : null;
   const [attendance, leaves, documents, payroll] = await Promise.all([
-    prisma.attendances.findMany({ where: { employeeId: employee.id, date: { gte: start, lte: end } }, orderBy: { date: 'desc' } }),
-    prisma.leaveRequests.findMany({ where: { employeeId: employee.id }, orderBy: { createdAt: 'desc' }, take: 100 }),
-    prisma.employeeDocuments.findMany({ where: { employeeId: employee.id }, orderBy: { createdAt: 'desc' } }),
-    calculatePayroll(employee, period)
+    !section || section === 'attendance' ? prisma.attendances.findMany({ where: { employeeId: employee.id, date: { gte: start, lte: end } }, orderBy: { date: 'desc' } }) : [],
+    !section || section === 'leave' ? prisma.leaveRequests.findMany({ where: { employeeId: employee.id }, orderBy: { createdAt: 'desc' }, take: 100 }) : [],
+    !section || section === 'documents' ? prisma.employeeDocuments.findMany({ where: { employeeId: employee.id }, orderBy: { createdAt: 'desc' } }) : [],
+    !section || section === 'payslips' ? calculatePayroll(employee, period) : null
   ]);
   res.json({ linked: true, employee, attendance, leaves, documents, payroll });
 }));
@@ -1691,6 +1872,10 @@ router.get('/attendance', authMiddleware, checkRole(ALL_STAFF), asyncHandler(asy
   const date = String(req.query.date || currentDateOnly());
   const where = { date: toDateOnly(date) };
   if (!ADMIN.includes(req.user.role)) where.employeeId = (await employeeForUser(req.user)).id;
+  else if (typeof req.query.employeeIds === 'string') {
+    const ids = req.query.employeeIds.split(',').map(Number).filter(Number.isSafeInteger);
+    where.employeeId = { in: ids };
+  }
   const rows = await prisma.attendances.findMany({ where, orderBy: { employeeId: 'asc' }, ...pagination(req.query) });
   await sendPaginatedList(req, res, rows, () => prisma.attendances.count({ where }));
 }));
@@ -1728,7 +1913,7 @@ router.get('/payroll', authMiddleware, checkRole(ADMIN), asyncHandler(async (req
   const period = String(req.query.period || currentDateOnly().slice(0, 7));
   periodDetails(period);
   const employees = await prisma.employees.findMany({ orderBy: [{ name: 'asc' }, { id: 'asc' }], ...pagination(req.query) });
-  const rows = await Promise.all(employees.map((employee) => calculatePayroll(employee, period)));
+  const rows = await Promise.all(employees.map(async (employee) => ({ ...(await calculatePayroll(employee, period)), employee })));
   await sendPaginatedList(req, res, rows, () => prisma.employees.count());
 }));
 
@@ -2514,17 +2699,14 @@ router.get('/chat/users', authMiddleware, asyncHandler(async (req, res) => {
   });
   const unreadMap = new Map(unreadCounts.map((u) => [u.senderId, u._count.id]));
 
-  // Recent 1-on-1 messages
-  const recentMessages = await prisma.chatMessages.findMany({
-    where: {
-      groupId: null,
-      OR: [
-        { senderId: currentUserId },
-        { receiverId: currentUserId }
-      ]
-    },
-    orderBy: { createdAt: 'desc' }
-  });
+  // Return the latest message per contact instead of loading the entire conversation history.
+  const recentMessages = await prisma.$queryRaw`
+    SELECT DISTINCT ON (CASE WHEN "senderId" = ${currentUserId} THEN "receiverId" ELSE "senderId" END)
+      "id", "message", "senderId", "receiverId", "read", "createdAt"
+    FROM "ChatMessages"
+    WHERE "groupId" IS NULL AND ("senderId" = ${currentUserId} OR "receiverId" = ${currentUserId})
+    ORDER BY CASE WHEN "senderId" = ${currentUserId} THEN "receiverId" ELSE "senderId" END, "createdAt" DESC, "id" DESC
+  `;
 
   const lastMessageMap = new Map();
   for (const msg of recentMessages) {
@@ -2898,6 +3080,7 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const historyStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
   const canSales = SALES.includes(req.user.role);
   const canFinance = FINANCE.includes(req.user.role);
   const canTickets = [...SUPPORT, ...OPERATIONS].includes(req.user.role);
@@ -2946,8 +3129,8 @@ router.get('/dashboard/stats', authMiddleware, checkRole(ALL_STAFF), asyncHandle
     prisma.tasks.count({ where: { status: { in: ['Pending', 'Ongoing'] } } }),
     prisma.customers.findMany({ select: { id: true, services: true, createdAt: true } }),
     prisma.inventories.findMany({ select: { stock: true, min: true, status: true } }),
-    prisma.installations.findMany({ select: { id: true, createdAt: true, date: true } }),
-    prisma.tasks.findMany({ select: { id: true, createdAt: true } })
+    prisma.installations.findMany({ where: { OR: [{ date: { gte: historyStart } }, { createdAt: { gte: historyStart } }] }, select: { id: true, createdAt: true, date: true } }),
+    prisma.tasks.findMany({ where: { createdAt: { gte: historyStart } }, select: { id: true, createdAt: true } })
   ]);
 
   const pendingRevenue = Number(outstandingRows[0]?.value || 0);

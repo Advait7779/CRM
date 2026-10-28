@@ -24,6 +24,7 @@ const prisma = {
   users: { async findUnique({ where }) { return users.find(u => u.id === where.id) || null; } },
   renewals: {
     async findUnique({ where }) { return renewalsList.find(r => r.id === where.id) || null; },
+    async findMany() { return renewalsList.filter(r => r.type.toLowerCase().startsWith('gps')); },
     async delete({ where }) {
       const idx = renewalsList.findIndex(r => r.id === where.id);
       if (idx !== -1) return renewalsList.splice(idx, 1)[0];
@@ -83,11 +84,17 @@ test('GPS renewals bulk delete deletes all GPS renewals or selected IDs and rest
   assert.equal(renewalsList.some(r => r.id === 102), true);
   assert.equal(renewalsList.some(r => r.id === 201), true); // AMC untouched
 
-  // 4. Delete all remaining GPS renewals
+  // 4. Filtered deletion must include matching records outside the visible page.
+  const resSearch = await del(2, { filteredOnly: true, search: 'Customer 2', statusFilter: 'all' });
+  assert.equal(resSearch.status, 200);
+  assert.equal((await resSearch.json()).count, 1);
+  assert.equal(renewalsList.some(r => r.id === 102), false);
+
+  // 5. Delete all remaining GPS renewals
   const resAll = await del(1);
   assert.equal(resAll.status, 200);
   const dataAll = await resAll.json();
-  assert.equal(dataAll.count, 2); // 102 and 103 deleted
+  assert.equal(dataAll.count, 1); // 103 deleted
   assert.equal(renewalsList.length, 1);
   assert.equal(renewalsList[0].id, 201); // AMC renewal preserved
 });

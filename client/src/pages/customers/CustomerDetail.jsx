@@ -21,6 +21,10 @@ export default function CustomerDetail() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const [relatedPage, setRelatedPage] = useState(1)
+  const [relatedPageSize, setRelatedPageSize] = useState(10)
+  const [relatedTotal, setRelatedTotal] = useState(0)
+  const [relatedReload, setRelatedReload] = useState(0)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [uploading, setUploading] = useState(false)
@@ -28,7 +32,7 @@ export default function CustomerDetail() {
 
   const load = useCallback(async () => {
     try {
-      const result = await apiGet(`/customers/${id}/overview`)
+      const result = await apiGet(`/customers/${id}/overview?summaryOnly=1`)
       setData(result)
       setForm(result.customer)
     } catch (error) {
@@ -39,6 +43,23 @@ export default function CustomerDetail() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const type = activeTab === 'services' ? 'renewals' : activeTab
+    if (!['renewals', 'documents', 'invoices', 'tickets'].includes(type)) return
+    let active = true
+    apiGet(`/customers/${id}/related?type=${type}&withTotal=1&page=${relatedPage}&pageSize=${relatedPageSize}`)
+      .then(result => {
+        if (!active) return
+        setRelatedTotal(result.total)
+        setData(previous => {
+          if (!previous) return previous
+          if (type === 'documents') return { ...previous, customer: { ...previous.customer, documents: result.rows } }
+          return { ...previous, [type]: result.rows }
+        })
+      })
+      .catch(error => { if (active) toast.error(error.message) })
+    return () => { active = false }
+  }, [id, activeTab, relatedPage, relatedPageSize, relatedReload])
 
   const saveProfile = async (event) => {
     event.preventDefault()
@@ -53,6 +74,8 @@ export default function CustomerDetail() {
         status: form.status
       })
       setData(prev => ({ ...prev, customer }))
+      await load()
+      setRelatedReload(value => value + 1)
       setEditing(false)
       toast.success('Customer profile updated')
     } catch (error) {
@@ -69,6 +92,7 @@ export default function CustomerDetail() {
     try {
       await apiUpload(`/customers/${id}/documents`, body)
       await load()
+      setRelatedReload(value => value + 1)
       toast.success('Document uploaded')
     } catch (error) {
       toast.error(error.message)
@@ -85,6 +109,7 @@ export default function CustomerDetail() {
         ...prev,
         customer: { ...prev.customer, documents: prev.customer.documents.filter(item => item.id !== document.id) }
       }))
+      setRelatedReload(value => value + 1)
       toast.success('Document deleted')
     } catch (error) {
       toast.error(error.message)
@@ -94,7 +119,7 @@ export default function CustomerDetail() {
   if (loading) return <div className="glass-card" style={{ padding: 30 }}>Loading customer...</div>
   if (!data) return <div className="glass-card" style={{ padding: 30 }}>Customer could not be loaded.</div>
 
-  const { customer, invoices, tickets, renewals, installations, quotations } = data
+  const { customer, invoices, tickets, renewals } = data
   const tabs = ['overview', 'services', 'documents', 'invoices', 'tickets']
 
   return (
@@ -140,7 +165,7 @@ export default function CustomerDetail() {
 
       <div style={{ display: 'flex', gap: 12, borderBottom: '1px solid var(--border-subtle)', marginBottom: 24, overflowX: 'auto' }}>
         {tabs.map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+          <button key={tab} onClick={() => { setActiveTab(tab); setRelatedPage(1) }} style={{
             padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
             color: activeTab === tab ? '#6366f1' : 'var(--text-secondary)',
             borderBottom: activeTab === tab ? '2px solid #6366f1' : '2px solid transparent',
@@ -160,10 +185,10 @@ export default function CustomerDetail() {
           <div className="glass-card" style={{ padding: 24 }}>
             <h3 style={{ marginBottom: 18 }}>Relationship Summary</h3>
             <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-              <div><strong>{invoices.length}</strong><div className="text-muted">Invoices</div></div>
-              <div><strong>{tickets.length}</strong><div className="text-muted">Tickets</div></div>
-              <div><strong>{installations.length}</strong><div className="text-muted">Installations</div></div>
-              <div><strong>{quotations.length}</strong><div className="text-muted">Quotations</div></div>
+              <div><strong>{data.counts.invoices}</strong><div className="text-muted">Invoices</div></div>
+              <div><strong>{data.counts.tickets}</strong><div className="text-muted">Tickets</div></div>
+              <div><strong>{data.counts.installations}</strong><div className="text-muted">Installations</div></div>
+              <div><strong>{data.counts.quotations}</strong><div className="text-muted">Quotations</div></div>
             </div>
           </div>
         </div>
@@ -179,7 +204,7 @@ export default function CustomerDetail() {
             </div>
           </div>
           <h3 style={{ marginTop: 28, marginBottom: 12 }}>Renewals</h3>
-          <PaginatedTable><table className="data-table">
+          <PaginatedTable serverPagination={{ page: relatedPage, pageSize: relatedPageSize, total: relatedTotal, onPageChange: setRelatedPage, onPageSizeChange: size => { setRelatedPageSize(size); setRelatedPage(1) } }}><table className="data-table">
             <thead><tr><th>Type</th><th>Next Due</th><th>Amount</th><th>Status</th></tr></thead>
             <tbody>
               {renewals.map(item => <tr key={item.id}><td>{item.type}</td><td>{item.nextDue}</td><td>{item.amount}</td><td>{item.status}</td></tr>)}
@@ -199,7 +224,7 @@ export default function CustomerDetail() {
               </label>
             </div>
           </div>
-          <PaginatedTable><table className="data-table">
+          <PaginatedTable serverPagination={{ page: relatedPage, pageSize: relatedPageSize, total: relatedTotal, onPageChange: setRelatedPage, onPageSizeChange: size => { setRelatedPageSize(size); setRelatedPage(1) } }}><table className="data-table">
             <thead><tr><th>File</th><th>Uploaded</th><th>Size</th><th>Actions</th></tr></thead>
             <tbody>
               {(customer.documents || []).map(document => (
@@ -221,7 +246,7 @@ export default function CustomerDetail() {
 
       {activeTab === 'invoices' && (
         <div className="table-pagination-shell" style={{ overflow: 'hidden' }}>
-          <PaginatedTable><table className="data-table">
+          <PaginatedTable serverPagination={{ page: relatedPage, pageSize: relatedPageSize, total: relatedTotal, onPageChange: setRelatedPage, onPageSizeChange: size => { setRelatedPageSize(size); setRelatedPage(1) } }}><table className="data-table">
             <thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Status</th></tr></thead>
             <tbody>
               {invoices.map(item => <tr key={item.id}><td>{item.id}</td><td>{item.date}</td><td>{money(item.total)}</td><td>{item.status}</td></tr>)}
@@ -233,7 +258,7 @@ export default function CustomerDetail() {
 
       {activeTab === 'tickets' && (
         <div className="table-pagination-shell" style={{ overflow: 'hidden' }}>
-          <PaginatedTable><table className="data-table">
+          <PaginatedTable serverPagination={{ page: relatedPage, pageSize: relatedPageSize, total: relatedTotal, onPageChange: setRelatedPage, onPageSizeChange: size => { setRelatedPageSize(size); setRelatedPage(1) } }}><table className="data-table">
             <thead><tr><th>Subject</th><th>Service</th><th>Priority</th><th>Status</th></tr></thead>
             <tbody>
               {tickets.map(item => <tr key={item.id}><td>{item.subject}</td><td>{item.service}</td><td>{item.priority}</td><td>{item.status}</td></tr>)}

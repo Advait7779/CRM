@@ -1,10 +1,10 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import { X, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { apiDelete, apiDownload, apiGetAll, apiPost, apiUpload } from '../../utils/api'
+import { apiDelete, apiDownload, apiGet, apiPost, apiUpload } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
@@ -49,6 +49,9 @@ export default function InstallationsPage() {
   })
   const [gpsList, setGpsList] = useState([])
   const [cctvList, setCctvList] = useState([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
   const [gpsModal, setGpsModal] = useState(false)
   const [cctvModal, setCctvModal] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
@@ -79,25 +82,27 @@ export default function InstallationsPage() {
     }
   }, [user?.role])
 
-  const loadInstallations = async () => {
+  const loadInstallations = useCallback(async () => {
     try {
-      const rows = await apiGetAll('/installations')
-      setGpsList(rows.filter(row => row.type === 'GPS'))
-      setCctvList(rows.filter(row => row.type === 'CCTV'))
+      const type = activeTab === 'gps' ? 'GPS' : 'CCTV'
+      const result = await apiGet(`/installations?type=${type}&withTotal=1&page=${page}&pageSize=${pageSize}`)
+      if (type === 'GPS') setGpsList(result.rows)
+      else setCctvList(result.rows)
+      setTotal(result.total)
     } catch (error) {
       toast.error(`Failed to load installations: ${error.message}`)
     }
-  }
+  }, [activeTab, page, pageSize])
 
-  useEffect(() => { loadInstallations() }, [])
+  useEffect(() => { loadInstallations() }, [loadInstallations])
 
   const handleAddGps = async (e) => {
     e.preventDefault()
     if (!gpsForm.vehicle?.trim()) return toast.error('Please enter Vehicle Number')
     if (!gpsForm.customer?.trim()) return toast.error('Please enter Customer name')
     try {
-      const created = await apiPost('/installations', { ...gpsForm, type: 'GPS', status: 'Pending' })
-      setGpsList(prev => [created, ...prev])
+      await apiPost('/installations', { ...gpsForm, type: 'GPS', status: 'Pending' })
+      await loadInstallations()
       toast.success('GPS device allocation saved')
       setGpsModal(false)
       setGpsForm({ vehicle: '', customer: '', phone: '', email: '', location: '', deviceType: '', installer: '', date: '', testing: false, approval: false })
@@ -109,8 +114,8 @@ export default function InstallationsPage() {
     if (!cctvForm.customer?.trim()) return toast.error('Please enter Customer name')
     if (!cctvForm.site?.trim()) return toast.error('Please enter installation site address')
     try {
-      const created = await apiPost('/installations', { ...cctvForm, type: 'CCTV', status: 'Pending' })
-      setCctvList(prev => [created, ...prev])
+      await apiPost('/installations', { ...cctvForm, type: 'CCTV', status: 'Pending' })
+      await loadInstallations()
       toast.success('CCTV installation saved')
       setCctvModal(false)
       setCctvForm({ customer: '', site: '', cameras: 4, dvr: 'Hikvision 8ch', tech: '', date: '', survey: false, signOff: false })
@@ -125,6 +130,7 @@ export default function InstallationsPage() {
       await apiDelete(`/installations/${id}`)
       if (type === 'GPS') setGpsList(current => current.filter(job => job.id !== id))
       else setCctvList(current => current.filter(job => job.id !== id))
+      await loadInstallations()
       setInstallationToDelete(null)
       toast.success('Installation deleted')
     } catch (error) { toast.error(error.message) }
@@ -209,7 +215,7 @@ export default function InstallationsPage() {
         ].map(t => (
           <button
             key={t.id}
-            onClick={() => setActiveTab(t.id)}
+            onClick={() => { setActiveTab(t.id); setPage(1) }}
             style={{
               padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, transition: 'all 0.2s', whiteSpace: 'nowrap',
               color: activeTab === t.id ? '#6366f1' : 'var(--text-secondary)',
@@ -225,7 +231,7 @@ export default function InstallationsPage() {
       {/* GPS Content */}
       {activeTab === 'gps' && (
         <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <PaginatedTable><table className="data-table" style={{ minWidth: 960 }}>
+          <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 960 }}>
             <thead>
               <tr>
                 <th>Vehicle Number</th>
@@ -311,7 +317,7 @@ export default function InstallationsPage() {
       {/* CCTV Content */}
       {activeTab === 'cctv' && (
         <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
+          <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 800 }}>
             <thead>
               <tr>
                 <th>Customer</th>

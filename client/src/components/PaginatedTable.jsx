@@ -10,23 +10,30 @@ function rowsFrom(children) {
   ).filter(Boolean)
 }
 
-export default function PaginatedTable({ children, menuSpace = false }) {
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+export default function PaginatedTable({ children, menuSpace = false, serverPagination }) {
+  const [localPage, setLocalPage] = useState(1)
+  const [localPageSize, setLocalPageSize] = useState(10)
+  const page = serverPagination?.page ?? localPage
+  const pageSize = serverPagination?.pageSize ?? localPageSize
+  const setPage = serverPagination?.onPageChange ?? setLocalPage
+  const setPageSize = serverPagination?.onPageSizeChange ?? setLocalPageSize
   const table = Children.only(children)
   const tableChildren = Children.toArray(table.props.children)
   const body = tableChildren.find(child => isValidElement(child) && child.type === 'tbody')
   const rows = body ? rowsFrom(body.props.children) : []
   const onlyCell = rows.length === 1 ? Children.toArray(rows[0]?.props?.children) : []
   const isEmptyMessage = onlyCell.length === 1 && isValidElement(onlyCell[0]) && onlyCell[0].type === 'td' && Boolean(onlyCell[0].props.colSpan)
-  const rowCount = isEmptyMessage ? 0 : rows.length
+  const rowCount = serverPagination ? serverPagination.total : isEmptyMessage ? 0 : rows.length
   const rowIdentity = rows.map((row, index) => row?.key ?? index).join('|')
   const totalPages = Math.max(1, Math.ceil(rowCount / pageSize))
   const currentPage = Math.min(page, totalPages)
 
-  useEffect(() => { setPage(1) }, [rowIdentity])
+  useEffect(() => { if (!serverPagination) setLocalPage(1) }, [rowIdentity, serverPagination])
+  useEffect(() => {
+    if (serverPagination && page > totalPages) setPage(totalPages)
+  }, [page, totalPages, serverPagination, setPage])
 
-  const visibleRows = rowCount > pageSize
+  const visibleRows = serverPagination ? rows : rowCount > pageSize
     ? rows.slice((currentPage - 1) * pageSize, currentPage * pageSize)
     : rows
   const pagedTable = body

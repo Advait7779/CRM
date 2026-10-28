@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Plus, X, Key, Eye, EyeOff, Trash2, ShieldCheck, ShieldAlert, Pencil, LogIn } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiGet, apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 import { useAuth } from '../../context/AuthContext'
 
@@ -46,6 +46,10 @@ function ProductAccessPicker({ role, selected, options, onChange }) {
 export default function UsersPage() {
   const { user: currentUser, switchToUser } = useAuth()
   const [users, setUsers] = useState([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [reload, setReload] = useState(0)
   const [modalOpen, setModalOpen] = useState(false)
   const [editModalUser, setEditModalUser] = useState(null)
   const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', role: 'support_executive', justdialProducts: [] })
@@ -58,7 +62,14 @@ export default function UsersPage() {
   const [form, setForm] = useState(emptyForm)
 
   useEffect(() => {
-    apiGetAll('/users').then(setUsers).catch(error => toast.error(error.message))
+    let active = true
+    apiGet(`/users?withTotal=1&page=${page}&pageSize=${pageSize}`)
+      .then(data => { if (active) { setUsers(data.rows); setTotal(data.total) } })
+      .catch(error => { if (active) toast.error(error.message) })
+    return () => { active = false }
+  }, [page, pageSize, reload])
+
+  useEffect(() => {
     apiGet('/justdial/products')
       .then(products => setProductOptions(products.assignable || []))
       .catch(() => toast.error('Justdial product settings are unavailable. Restart the local backend.'))
@@ -74,6 +85,7 @@ export default function UsersPage() {
       setModalOpen(false)
       setForm(emptyForm)
       toast.success('System user created')
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
   }
 
@@ -102,6 +114,7 @@ export default function UsersPage() {
       setUsers(current => current.filter(item => item.id !== confirmDeleteUser.id))
       toast.success(`User ${confirmDeleteUser.name} removed from system`)
       setConfirmDeleteUser(null)
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
   }
 
@@ -168,7 +181,7 @@ export default function UsersPage() {
         <button className="btn-primary" onClick={() => setModalOpen(true)} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}><Plus size={16} /> Add User</button>
       </div>
       <div className="table-pagination-shell" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <PaginatedTable menuSpace><table className="data-table" style={{ overflow: 'visible', minWidth: 750 }}>
+        <PaginatedTable menuSpace serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ overflow: 'visible', minWidth: 750 }}>
           <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th style={{ width: 220 }}>Role Access</th><th>Created</th><th>Action</th></tr></thead>
           <tbody>
             {users.map((user, idx) => {

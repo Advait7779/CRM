@@ -3,7 +3,7 @@ import ModalBackdrop from '../../components/ModalBackdrop'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Clock, FileText, CalendarDays, Download, Trash2, Printer, LogIn, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { apiDelete, apiDownload, apiGet, apiGetAll, apiPost, apiPut, apiUpload } from '../../utils/api'
+import { apiDelete, apiDownload, apiGet, apiPost, apiPut, apiUpload } from '../../utils/api'
 import { localDateString } from '../../utils/date'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
@@ -19,6 +19,9 @@ const statusClass = status => status === 'Approved' || status === 'Paid' || stat
 export default function MyWorkPage() {
   const [data, setData] = useState(null)
   const [payslips, setPayslips] = useState([])
+  const [payslipsTotal, setPayslipsTotal] = useState(0)
+  const [payslipsPage, setPayslipsPage] = useState(1)
+  const [payslipsPageSize, setPayslipsPageSize] = useState(10)
   const [tab, setTab] = useState('attendance')
   const [leave, setLeave] = useState(leaveInitial)
   const [documentType, setDocumentType] = useState('Identity')
@@ -29,11 +32,14 @@ export default function MyWorkPage() {
 
   const load = useCallback(async () => {
     try {
-      const [hr, payrollRows] = await Promise.all([apiGet(`/my/hr?period=${currentPeriod}`), apiGetAll(`/my/payslips?period=${currentPeriod}`)])
+      const [hr, payrollRows] = await Promise.all([
+        apiGet(`/my/hr?period=${currentPeriod}&section=${tab}`),
+        tab === 'payslips' ? apiGet(`/my/payslips?period=${currentPeriod}&withTotal=1&page=${payslipsPage}&pageSize=${payslipsPageSize}`) : null
+      ])
       setData(hr)
-      setPayslips(payrollRows)
+      if (payrollRows) { setPayslips(payrollRows.rows); setPayslipsTotal(payrollRows.total) }
     } catch (error) { toast.error(error.message) }
-  }, [])
+  }, [tab, payslipsPage, payslipsPageSize])
 
   useEffect(() => { load() }, [load])
 
@@ -185,7 +191,7 @@ export default function MyWorkPage() {
         })}><Trash2 size={14} /></button></td></tr>)}{!data.documents.length && <tr><td colSpan="4">No documents uploaded.</td></tr>}</tbody></table></PaginatedTable></div>
       </div>}
 
-      {tab === 'payslips' && <div className="table-pagination-shell" style={{ overflowX: 'auto' }}><PaginatedTable><table className="data-table"><thead><tr><th>Period</th><th>Gross</th><th>Attendance Deduction</th><th>Other Deduction</th><th>Net</th><th>Status</th><th></th></tr></thead><tbody>{payslips.map(row => <tr key={row.id}><td>{row.period}</td><td>{money(row.gross)}</td><td>{money(row.attendanceDeduction)}</td><td>{money(row.deduction)}</td><td><strong>{money(row.net)}</strong></td><td><span className={`badge ${statusClass(row.status)}`}>{row.status}</span></td><td><button className="btn-secondary" onClick={() => setSelectedPayslip(row)}><FileText size={14} /> View</button></td></tr>)}{!payslips.length && payroll && <tr><td>{payroll.period}</td><td>{money(payroll.gross)}</td><td>{money(payroll.attendanceDeduction)}</td><td>{money(payroll.deduction)}</td><td>{money(payroll.net)}</td><td>{payroll.status}</td><td /></tr>}</tbody></table></PaginatedTable></div>}
+      {tab === 'payslips' && <div className="table-pagination-shell" style={{ overflowX: 'auto' }}><PaginatedTable serverPagination={{ page: payslipsPage, pageSize: payslipsPageSize, total: payslipsTotal || (payroll ? 1 : 0), onPageChange: setPayslipsPage, onPageSizeChange: size => { setPayslipsPageSize(size); setPayslipsPage(1) } }}><table className="data-table"><thead><tr><th>Period</th><th>Gross</th><th>Attendance Deduction</th><th>Other Deduction</th><th>Net</th><th>Status</th><th></th></tr></thead><tbody>{payslips.map(row => <tr key={row.id}><td>{row.period}</td><td>{money(row.gross)}</td><td>{money(row.attendanceDeduction)}</td><td>{money(row.deduction)}</td><td><strong>{money(row.net)}</strong></td><td><span className={`badge ${statusClass(row.status)}`}>{row.status}</span></td><td><button className="btn-secondary" onClick={() => setSelectedPayslip(row)}><FileText size={14} /> View</button></td></tr>)}{!payslips.length && payroll && <tr><td>{payroll.period}</td><td>{money(payroll.gross)}</td><td>{money(payroll.attendanceDeduction)}</td><td>{money(payroll.deduction)}</td><td>{money(payroll.net)}</td><td>{payroll.status}</td><td /></tr>}</tbody></table></PaginatedTable></div>}
 
       {selectedPayslip && <ModalBackdrop className="modal-backdrop" onClick={() => setSelectedPayslip(null)}><div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}><h2>Salary Payslip · {selectedPayslip.period}</h2><p>{data.employee.name} · {data.employee.dept}</p><table style={{ width: '100%', margin: '20px 0' }}><tbody><tr><td>Basic salary</td><td style={{ textAlign: 'right' }}>{money(selectedPayslip.basic)}</td></tr><tr><td>Incentive</td><td style={{ textAlign: 'right' }}>{money(selectedPayslip.incentive)}</td></tr><tr><td>Attendance ({selectedPayslip.absentDays} absent days)</td><td style={{ textAlign: 'right' }}>-{money(selectedPayslip.attendanceDeduction)}</td></tr><tr><td>Other deductions</td><td style={{ textAlign: 'right' }}>-{money(selectedPayslip.deduction)}</td></tr><tr><td><strong>Net salary</strong></td><td style={{ textAlign: 'right' }}><strong>{money(selectedPayslip.net)}</strong></td></tr></tbody></table><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button className="btn-secondary" onClick={() => setSelectedPayslip(null)}>Close</button><button className="btn-primary" onClick={() => window.print()}><Printer size={15} /> Print</button></div></div></ModalBackdrop>}
 

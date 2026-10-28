@@ -143,8 +143,10 @@ export default function ChatPage() {
   // Initial load & periodic contact refresh
   useEffect(() => {
     fetchContacts()
-    const interval = setInterval(() => fetchContacts(true), 5000)
-    return () => clearInterval(interval)
+    const refresh = () => { if (!document.hidden) fetchContacts(true) }
+    const interval = setInterval(refresh, 5000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', refresh) }
   }, [fetchContacts])
 
   // Fetch messages for active contact / group
@@ -188,7 +190,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeContact) return
     const interval = setInterval(() => {
-      fetchMessages(activeContact.groupId || activeContact.id, true, activeContact.isGroup)
+      if (!document.hidden) fetchMessages(activeContact.groupId || activeContact.id, true, activeContact.isGroup)
     }, 2500)
     return () => clearInterval(interval)
   }, [activeContact, fetchMessages])

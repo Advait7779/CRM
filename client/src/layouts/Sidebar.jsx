@@ -122,6 +122,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
   useEffect(() => {
     let isMounted = true
     const fetchUnread = () => {
+      if (document.hidden) return
       apiGet('/chat/unread-count')
         .then(data => {
           if (isMounted && data?.unreadCount !== undefined) {
@@ -132,9 +133,11 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
     }
     fetchUnread()
     const interval = setInterval(fetchUnread, 5000)
+    document.addEventListener('visibilitychange', fetchUnread)
     return () => {
       isMounted = false
       clearInterval(interval)
+      document.removeEventListener('visibilitychange', fetchUnread)
     }
   }, [])
 

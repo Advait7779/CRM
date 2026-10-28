@@ -1,11 +1,11 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, X, LogOut, CheckCircle2, FileText, Printer, Eye, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { localDateString } from '../../utils/date'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiGetAll, apiPost, apiPut, apiDelete } from '../../utils/api'
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
 const emptyForm = { name: '', dept: 'Sales', role: '', phone: '', email: '', basicSalary: 20000, incentive: 0, deduction: 0 }
@@ -15,6 +15,14 @@ const currentPeriod = today.slice(0, 7)
 export default function EmployeesPage() {
   const [activeTab, setActiveTab] = useState('list')
   const [employees, setEmployees] = useState([])
+  const [employeesTotal, setEmployeesTotal] = useState(0)
+  const [listPage, setListPage] = useState(1)
+  const [tableEmployees, setTableEmployees] = useState([])
+  const [tablePage, setTablePage] = useState(1)
+  const [tablePageSize, setTablePageSize] = useState(10)
+  const [tableTotal, setTableTotal] = useState(0)
+  const listEndRef = useRef(null)
+  const loadingMoreRef = useRef(false)
   const [attendance, setAttendance] = useState([])
   const [payroll, setPayroll] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -25,18 +33,45 @@ export default function EmployeesPage() {
 
   const load = useCallback(async () => {
     try {
-      const [employeeRows, attendanceRows, payrollRows] = await Promise.all([
-        apiGetAll('/employees'),
-        apiGetAll(`/attendance?date=${today}`),
-        apiGetAll(`/payroll?period=${currentPeriod}`)
-      ])
-      setEmployees(employeeRows)
-      setAttendance(attendanceRows)
-      setPayroll(payrollRows)
+      if (activeTab === 'list') {
+        const result = await apiGet('/employees?withTotal=1&page=1&pageSize=50')
+        setEmployees(result.rows)
+        setEmployeesTotal(result.total)
+        setListPage(1)
+      } else if (activeTab === 'attendance') {
+        const result = await apiGet(`/employees?withTotal=1&page=${tablePage}&pageSize=${tablePageSize}`)
+        const ids = result.rows.map(employee => employee.id).join(',')
+        const attendanceRows = ids ? await apiGet(`/attendance?date=${today}&employeeIds=${ids}&pageSize=200`) : []
+        setTableEmployees(result.rows)
+        setTableTotal(result.total)
+        setAttendance(attendanceRows)
+      } else {
+        const result = await apiGet(`/payroll?period=${currentPeriod}&withTotal=1&page=${tablePage}&pageSize=${tablePageSize}`)
+        setPayroll(result.rows)
+        setTableTotal(result.total)
+      }
     } catch (error) { toast.error(`Failed to load employee records: ${error.message}`) }
-  }, [])
+  }, [activeTab, tablePage, tablePageSize])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (activeTab !== 'list' || !listEndRef.current || employees.length >= employeesTotal) return
+    const observer = new IntersectionObserver(async entries => {
+      if (!entries[0]?.isIntersecting || loadingMoreRef.current) return
+      loadingMoreRef.current = true
+      try {
+        const nextPage = listPage + 1
+        const result = await apiGet(`/employees?withTotal=1&page=${nextPage}&pageSize=50`)
+        setEmployees(current => [...current, ...result.rows.filter(row => !current.some(employee => employee.id === row.id))])
+        setEmployeesTotal(result.total)
+        setListPage(nextPage)
+      } catch (error) { toast.error(`Failed to load employee records: ${error.message}`) }
+      finally { loadingMoreRef.current = false }
+    }, { rootMargin: '300px' })
+    observer.observe(listEndRef.current)
+    return () => observer.disconnect()
+  }, [activeTab, employees.length, employeesTotal, listPage])
 
   const createEmployee = async event => {
     event.preventDefault()
@@ -57,8 +92,10 @@ export default function EmployeesPage() {
     try {
       await apiDelete(`/employees/${employeeId}`)
       setEmployees(current => current.filter(employee => employee.id !== employeeId))
+      setTableEmployees(current => current.filter(employee => employee.id !== employeeId))
       setAttendance(current => current.filter(row => row.employeeId !== employeeId))
       setPayroll(current => current.filter(row => row.employeeId !== employeeId))
+      await load()
       setConfirmDeleteEmployee(null)
       toast.success('Employee deleted')
     } catch (error) { toast.error(error.message) }
@@ -77,7 +114,7 @@ export default function EmployeesPage() {
     try {
       const updated = await apiPut(`/attendance/${employee.id}`, { date: today, status, checkIn, checkOut, hoursWorked })
       setAttendance(current => [...current.filter(item => item.employeeId !== employee.id), updated])
-      setEmployees(current => current.map(item => item.id === employee.id ? { ...item, status } : item))
+      setTableEmployees(current => current.map(item => item.id === employee.id ? { ...item, status } : item))
       toast.success(checkout ? 'Check-out recorded' : 'Attendance updated')
     } catch (error) { toast.error(error.message) }
   }
@@ -99,11 +136,12 @@ export default function EmployeesPage() {
 
       <div style={{ display: 'flex', gap: 12, borderBottom: '1px solid var(--border-subtle)', marginBottom: 24, overflowX: 'auto' }}>
         {[['list', 'Staff Directory'], ['attendance', `Attendance · ${today}`], ['salary', `Payroll · ${currentPeriod}`]].map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} style={{ padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap', color: activeTab === id ? '#6366f1' : 'var(--text-secondary)', borderBottom: activeTab === id ? '2px solid #6366f1' : '2px solid transparent' }}>{label}</button>
+          <button key={id} onClick={() => { setActiveTab(id); setTablePage(1) }} style={{ padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap', color: activeTab === id ? '#6366f1' : 'var(--text-secondary)', borderBottom: activeTab === id ? '2px solid #6366f1' : '2px solid transparent' }}>{label}</button>
         ))}
       </div>
 
       {activeTab === 'list' && (
+        <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           {employees.map(employee => (
             <div key={employee.id} className="glass-card" style={{ padding: 20 }}>
@@ -124,11 +162,13 @@ export default function EmployeesPage() {
             </div>
           ))}
         </div>
+        <div ref={listEndRef} aria-hidden="true" style={{ height: 1, visibility: 'hidden' }} />
+        </>
       )}
 
       {activeTab === 'attendance' && (
         <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
+          <PaginatedTable serverPagination={{ page: tablePage, pageSize: tablePageSize, total: tableTotal, onPageChange: setTablePage, onPageSizeChange: size => { setTablePageSize(size); setTablePage(1) } }}><table className="data-table" style={{ minWidth: 800 }}>
             <thead>
               <tr>
                 <th style={{ width: '22%' }}>Employee</th>
@@ -140,7 +180,7 @@ export default function EmployeesPage() {
               </tr>
             </thead>
             <tbody>
-              {employees.map(employee => {
+              {tableEmployees.map(employee => {
                 const record = attendance.find(item => item.employeeId === employee.id)
                 const status = record?.status || 'Absent'
                 return (
@@ -178,7 +218,7 @@ export default function EmployeesPage() {
 
       {activeTab === 'salary' && (
         <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
+          <PaginatedTable serverPagination={{ page: tablePage, pageSize: tablePageSize, total: tableTotal, onPageChange: setTablePage, onPageSizeChange: size => { setTablePageSize(size); setTablePage(1) } }}><table className="data-table" style={{ minWidth: 800 }}>
             <thead>
               <tr>
                 <th style={{ width: '20%' }}>Employee</th>
@@ -192,7 +232,7 @@ export default function EmployeesPage() {
             </thead>
             <tbody>
               {payroll.map(row => {
-                const employee = employees.find(item => item.id === row.employeeId)
+                const employee = row.employee
                 if (!employee) return null
                 const net = Number(row.net ?? (Number(row.basic) + Number(row.incentive) - Number(row.deduction)))
                 return (

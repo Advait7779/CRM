@@ -1,10 +1,10 @@
 import PaginatedTable from '../../components/PaginatedTable'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Clock, FileUp, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
-import { apiDelete, apiGetAll, apiPost, apiPut, apiUpload } from '../../utils/api'
+import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from '../../utils/api'
 
 const emptyForm = { customer: '', contactNo: '', imeiNo: '', simNumber: '', vehicleNumber: '', nextDue: '', renewalDate: '', followUpDate: '', remarks: '' }
 const fields = [['customer', 'Customer name'], ['contactNo', 'Contact No'], ['imeiNo', 'IMEI No'], ['simNumber', 'SIM Number'], ['vehicleNumber', 'Vehicle Number'], ['nextDue', 'Expiry date'], ['renewalDate', 'Renewal date']]
@@ -21,6 +21,12 @@ const iconButton = (color, background) => ({ display: 'inline-flex', alignItems:
 export default function RenewalsPage() {
   const fileInputRef = useRef(null)
   const [renewals, setRenewals] = useState([])
+  const [counts, setCounts] = useState({ total: 0, followUp: 0, confirmed: 0 })
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [reload, setReload] = useState(0)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -32,12 +38,22 @@ export default function RenewalsPage() {
   const [deleteAllScope, setDeleteAllScope] = useState('all')
   const [followUpModal, setFollowUpModal] = useState(null)
 
-  const load = async () => {
-    try { setRenewals(await apiGetAll('/gps-renewals')) }
+  const load = useCallback(async () => {
+    try {
+      const [result, summary] = await Promise.all([
+        apiGet(`/gps-renewals?withTotal=1&page=${page}&pageSize=${pageSize}&statusFilter=${encodeURIComponent(statusFilter)}&search=${encodeURIComponent(debouncedSearch)}`),
+        apiGet('/gps-renewals/summary')
+      ])
+      setRenewals(result.rows)
+      setTotal(result.total)
+      setCounts(summary)
+    }
     catch (error) { toast.error(error.message) }
     finally { setLoading(false) }
-  }
-  useEffect(() => { load() }, [])
+  }, [page, pageSize, statusFilter, debouncedSearch])
+  useEffect(() => { const timer = setTimeout(() => setDebouncedSearch(search), 250); return () => clearTimeout(timer) }, [search])
+  useEffect(() => { setPage(1) }, [debouncedSearch, statusFilter])
+  useEffect(() => { load() }, [load, reload])
 
   const openForm = renewal => {
     setEditing(renewal || { id: null })
@@ -74,7 +90,7 @@ export default function RenewalsPage() {
         toast.success('GPS renewal added')
       }
       setEditing(null)
-      await load()
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
     finally { setBusy(false) }
   }
@@ -97,7 +113,7 @@ export default function RenewalsPage() {
       })
       toast.success(followUpModal.followUpDate ? 'Follow-up scheduled' : 'Follow-up saved')
       setFollowUpModal(null)
-      await load()
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
     finally { setBusy(false) }
   }
@@ -120,7 +136,7 @@ export default function RenewalsPage() {
       })
       toast.success('Follow-up cleared')
       setFollowUpModal(null)
-      await load()
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
     finally { setBusy(false) }
   }
@@ -134,10 +150,9 @@ export default function RenewalsPage() {
         await apiDelete(`/gps-renewals/${renewal.id}`)
         toast.success('GPS renewal deleted')
       } else if (action === 'deleteAll') {
-        if (deleteAllScope === 'filtered' && search && filtered.length < renewals.length) {
-          const ids = filtered.map(row => row.id)
-          const result = await apiDelete('/gps-renewals', { ids })
-          toast.success(result?.message || `Deleted ${ids.length} GPS renewal(s)`)
+        if (deleteAllScope === 'filtered' && search && total < counts.total) {
+          const result = await apiDelete('/gps-renewals', { filteredOnly: true, search, statusFilter })
+          toast.success(result?.message || `Deleted ${result?.count || 0} GPS renewal(s)`)
         } else {
           const result = await apiDelete('/gps-renewals')
           toast.success(result?.message || 'All GPS renewals deleted')
@@ -147,7 +162,7 @@ export default function RenewalsPage() {
         toast.success(action === 'confirm' ? 'Renewal marked confirmed' : 'Confirmation removed')
       }
       setConfirm(null)
-      await load()
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
     finally { setBusy(false) }
   }
@@ -169,23 +184,14 @@ export default function RenewalsPage() {
       else if (result.smsConfiguration === 'invalid_url') toast.error('Expired renewal SMS URL in Settings is invalid. Renewals imported without SMS.', { duration: 8000 })
       if (result.warnings?.length) toast(`${result.warnings.length} Excel warning(s): ${result.warnings.map(warning => `row ${warning.rowNumber}`).join(', ')}. Check the identifiers in the source file.`, { icon: '⚠️', duration: 10000 })
       if (result.missingContactCount) toast(`${result.missingContactCount} renewals have no valid mobile number for SMS.`, { icon: 'ℹ️', duration: 8000 })
-      await load()
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
     finally { setImporting(false) }
   }
 
-  const filtered = renewals.filter(row => {
-    if (statusFilter === 'followUp' && !row.followUpDate) return false
-    if (statusFilter === 'confirmed' && !row.confirmedAt) return false
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return [...fields.map(([key]) => key), 'remarks'].some(key =>
-      String(row[key] || '').toLowerCase().includes(q)
-    )
-  })
-
-  const followUpCount = renewals.filter(r => r.followUpDate).length
-  const confirmedCount = renewals.filter(r => r.confirmedAt).length
+  const filtered = renewals
+  const followUpCount = counts.followUp
+  const confirmedCount = counts.confirmed
   const today = todayStr()
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>Loading GPS renewals...</div>
@@ -199,18 +205,18 @@ export default function RenewalsPage() {
           type="button"
           className="btn-secondary"
           onClick={() => {
-            setDeleteAllScope(search && filtered.length < renewals.length ? 'filtered' : 'all')
+            setDeleteAllScope(search && total < counts.total ? 'filtered' : 'all')
             setConfirm({ action: 'deleteAll' })
           }}
-          disabled={!renewals.length || busy || importing}
+          disabled={!counts.total || busy || importing}
           style={{
-            borderColor: renewals.length ? 'rgba(239, 68, 68, 0.4)' : undefined,
-            color: renewals.length ? '#ef4444' : 'var(--text-secondary)',
-            background: renewals.length ? 'rgba(239, 68, 68, 0.05)' : undefined,
-            opacity: renewals.length ? 1 : 0.5,
-            cursor: renewals.length ? 'pointer' : 'not-allowed'
+            borderColor: counts.total ? 'rgba(239, 68, 68, 0.4)' : undefined,
+            color: counts.total ? '#ef4444' : 'var(--text-secondary)',
+            background: counts.total ? 'rgba(239, 68, 68, 0.05)' : undefined,
+            opacity: counts.total ? 1 : 0.5,
+            cursor: counts.total ? 'pointer' : 'not-allowed'
           }}
-          title={renewals.length ? 'Delete all GPS renewals' : 'No GPS renewals to delete'}
+          title={counts.total ? 'Delete all GPS renewals' : 'No GPS renewals to delete'}
         >
           <Trash2 size={16} style={{ marginRight: 6 }} /> Delete All
         </button>
@@ -225,7 +231,7 @@ export default function RenewalsPage() {
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {[
-          { id: 'all', label: `All (${renewals.length})` },
+          { id: 'all', label: `All (${counts.total})` },
           { id: 'followUp', label: `📅 Follow-ups (${followUpCount})`, color: '#d97706' },
           { id: 'confirmed', label: `✓ Confirmed (${confirmedCount})`, color: '#059669' }
         ].map(tab => {
@@ -255,7 +261,7 @@ export default function RenewalsPage() {
     </div>
 
     <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <PaginatedTable><table className="data-table" style={{ minWidth: 1240 }}>
+      <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 1240 }}>
         <thead><tr>{fields.map(([, label]) => <th key={label}>{label}</th>)}<th>Action</th></tr></thead>
         <tbody>
           {filtered.map(row => <tr key={row.id} style={row.confirmedAt ? { background: 'rgba(16, 185, 129, 0.12)' } : undefined}>
@@ -475,23 +481,23 @@ export default function RenewalsPage() {
           <h2 style={{ fontSize: 19, fontWeight: 700, marginBottom: 12, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Trash2 size={20} /> Delete GPS renewals?
           </h2>
-          {search && filtered.length < renewals.length ? (
+          {search && total < counts.total ? (
             <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 14 }}>
               <p style={{ marginBottom: 10 }}>A search filter is currently active. Choose what you want to delete:</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)', background: deleteAllScope === 'filtered' ? 'rgba(239,68,68,0.08)' : 'transparent' }}>
                   <input type="radio" name="deleteScope" checked={deleteAllScope === 'filtered'} onChange={() => setDeleteAllScope('filtered')} />
-                  <span>Delete only <strong>{filtered.length}</strong> matching search results</span>
+                  <span>Delete only <strong>{total}</strong> matching search results</span>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)', background: deleteAllScope === 'all' ? 'rgba(239,68,68,0.08)' : 'transparent' }}>
                   <input type="radio" name="deleteScope" checked={deleteAllScope === 'all'} onChange={() => setDeleteAllScope('all')} />
-                  <span>Delete all <strong>{renewals.length}</strong> GPS renewals</span>
+                  <span>Delete all <strong>{counts.total}</strong> GPS renewals</span>
                 </label>
               </div>
             </div>
           ) : (
             <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-              Are you sure you want to delete all <strong>{renewals.length}</strong> GPS renewal record{renewals.length === 1 ? '' : 's'}?
+              Are you sure you want to delete all <strong>{counts.total}</strong> GPS renewal record{counts.total === 1 ? '' : 's'}?
             </p>
           )}
           <p style={{ color: '#dc2626', fontSize: 13, marginTop: 10 }}>
@@ -506,7 +512,7 @@ export default function RenewalsPage() {
               disabled={busy}
               style={{ background: '#ef4444', borderColor: '#ef4444' }}
             >
-              {busy ? 'Deleting...' : deleteAllScope === 'filtered' && search && filtered.length < renewals.length ? `Delete ${filtered.length} Renewals` : `Delete All (${renewals.length})`}
+              {busy ? 'Deleting...' : deleteAllScope === 'filtered' && search && total < counts.total ? `Delete ${total} Renewals` : `Delete All (${counts.total})`}
             </button>
           </div>
         </>

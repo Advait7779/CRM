@@ -1,11 +1,11 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, X, Receipt, Trash2, Printer, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
-import { apiGetAll, apiPost, apiDelete } from '../../utils/api'
+import { apiGet, apiPost, apiDelete } from '../../utils/api'
 import { localDateString } from '../../utils/date'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
 
@@ -18,30 +18,44 @@ export default function AccountsPage() {
   const [payments, setPayments] = useState([])
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [reload, setReload] = useState(0)
+  const [summary, setSummary] = useState({ invoiced: 0, received: 0, outstanding: 0 })
+  const [customersLoaded, setCustomersLoaded] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [previewInvoice, setPreviewInvoice] = useState(null)
   const [confirmDeleteInvoice, setConfirmDeleteInvoice] = useState(null)
   const [form, setForm] = useState(emptyForm)
 
-  const load = useCallback(async () => {
-    try {
-      const [invoiceRows, paymentRows, customerRows] = await Promise.all([
-        apiGetAll('/invoices'),
-        apiGetAll('/payments'),
-        apiGetAll('/customers')
-      ])
-      setInvoices(invoiceRows)
-      setPayments(paymentRows)
-      setCustomers(customerRows)
-      if (customerRows[0]) setForm(current => current.customerId ? current : ({ ...current, customerId: customerRows[0].id }))
-    } catch (error) {
-      toast.error(`Failed to load accounts: ${error.message}`)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  useEffect(() => {
+    let active = true
+    const path = activeTab === 'payments' ? '/payments' : '/invoices'
+    const query = new URLSearchParams({ withTotal: '1', page: String(page), pageSize: String(pageSize) })
+    if (activeTab === 'outstanding') query.set('outstanding', '1')
+    apiGet(`${path}?${query}`)
+      .then(data => {
+        if (!active) return
+        if (activeTab === 'payments') setPayments(data.rows)
+        else setInvoices(data.rows)
+        setTotal(data.total)
+      })
+      .catch(error => { if (active) toast.error(`Failed to load accounts: ${error.message}`) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [activeTab, page, pageSize, reload])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { apiGet('/accounts/summary').then(setSummary).catch(() => {}) }, [reload])
+
+  useEffect(() => {
+    if (!modalOpen || customersLoaded) return
+    apiGet('/customers/options').then(rows => {
+      setCustomers(rows)
+      setCustomersLoaded(true)
+      if (rows[0]) setForm(current => current.customerId ? current : ({ ...current, customerId: rows[0].id }))
+    }).catch(error => toast.error(error.message))
+  }, [modalOpen, customersLoaded])
 
   const createInvoice = async event => {
     event.preventDefault()
@@ -62,6 +76,7 @@ export default function AccountsPage() {
       setModalOpen(false)
       setForm(current => ({ ...emptyForm, customerId: current.customerId }))
       toast.success('Invoice created')
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
   }
 
@@ -69,10 +84,10 @@ export default function AccountsPage() {
   const [paymentAmountInput, setPaymentAmountInput] = useState('')
   const [paymentMethodInput, setPaymentMethodInput] = useState('UPI / GPay')
 
-  const paidByInvoice = useMemo(() => payments.reduce((index, payment) => {
-    index.set(payment.invoiceId, (index.get(payment.invoiceId) || 0) + Number(payment.amount || 0))
+  const paidByInvoice = useMemo(() => invoices.reduce((index, invoice) => {
+    index.set(invoice.id, Number(invoice.paidAmount || 0))
     return index
-  }, new Map()), [payments])
+  }, new Map()), [invoices])
 
   const recordPayment = invoice => {
     const existing = paidByInvoice.get(invoice.id) || 0
@@ -102,15 +117,13 @@ export default function AccountsPage() {
         : item))
       setPaymentModalInvoice(null)
       toast.success('Payment recorded successfully')
+      setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
   }
 
-  const outstandingInvoices = invoices.filter(invoice => invoice.status !== 'Paid')
-  const receivedTotal = payments.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-  const outstandingTotal = outstandingInvoices.reduce((sum, invoice) => {
-    const paid = paidByInvoice.get(invoice.id) || 0
-    return sum + Math.max(0, Number(invoice.total || 0) - paid)
-  }, 0)
+  const outstandingInvoices = invoices
+  const receivedTotal = summary.received
+  const outstandingTotal = summary.outstanding
 
   return (
     <div className="animate-fade-in">
@@ -123,14 +136,14 @@ export default function AccountsPage() {
       </div>
 
       <div className="stats-grid" style={{ marginBottom: 24 }}>
-        <div className="glass-card" style={{ padding: 18 }}><div className="text-muted">Total Invoiced</div><strong>{money(invoices.reduce((sum, item) => sum + Number(item.total || 0), 0))}</strong></div>
+        <div className="glass-card" style={{ padding: 18 }}><div className="text-muted">Total Invoiced</div><strong>{money(summary.invoiced)}</strong></div>
         <div className="glass-card" style={{ padding: 18 }}><div className="text-muted">Payments Received</div><strong style={{ color: '#10b981' }}>{money(receivedTotal)}</strong></div>
         <div className="glass-card" style={{ padding: 18 }}><div className="text-muted">Outstanding Balance</div><strong style={{ color: '#f59e0b' }}>{money(outstandingTotal)}</strong></div>
       </div>
 
       <div style={{ display: 'flex', gap: 12, borderBottom: '1px solid var(--border-subtle)', marginBottom: 20, overflowX: 'auto' }}>
         {[['invoices', 'Invoices'], ['payments', 'Payment Receipts'], ['outstanding', 'Outstanding']].map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} style={{
+          <button key={id} onClick={() => { setActiveTab(id); setPage(1) }} style={{
             padding: '10px 16px', border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
             color: activeTab === id ? '#6366f1' : 'var(--text-secondary)',
             borderBottom: activeTab === id ? '2px solid #6366f1' : '2px solid transparent'
@@ -141,7 +154,7 @@ export default function AccountsPage() {
       {loading ? <div className="glass-card" style={{ padding: 30 }}>Loading accounts...</div> : (
         <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {activeTab === 'invoices' && (
-            <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
+            <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 800 }}>
               <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Subtotal</th><th>GST</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
                 {invoices.map(invoice => (
@@ -194,7 +207,7 @@ export default function AccountsPage() {
             </table></PaginatedTable>
           )}
           {activeTab === 'payments' && (
-            <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
+            <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 800 }}>
               <thead><tr><th>Receipt</th><th>Invoice</th><th>Customer</th><th>Date</th><th>Method</th><th>Amount</th></tr></thead>
               <tbody>
                 {payments.map(payment => <tr key={payment.id}><td>{payment.id}</td><td>{payment.invoiceId}</td><td>{payment.customer}</td><td>{payment.date}</td><td>{payment.method}</td><td>{money(payment.amount)}</td></tr>)}
@@ -203,7 +216,7 @@ export default function AccountsPage() {
             </table></PaginatedTable>
           )}
           {activeTab === 'outstanding' && (
-            <PaginatedTable><table className="data-table" style={{ minWidth: 800 }}>
+            <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 800 }}>
               <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
                 {outstandingInvoices.map(invoice => <tr key={invoice.id}><td>{invoice.id}</td><td>{invoice.customer}</td><td>{invoice.date}</td><td>{money(invoice.total)}</td><td>{invoice.status}</td><td><button className="btn-secondary" onClick={() => recordPayment(invoice)}>Record Receipt</button></td></tr>)}
@@ -362,6 +375,7 @@ export default function AccountsPage() {
             setInvoices(current => current.filter(item => item.id !== confirmDeleteInvoice.id))
             toast.success('Invoice deleted')
             setConfirmDeleteInvoice(null)
+            setReload(value => value + 1)
           } catch (err) { toast.error(err.message) }
         }}
       />

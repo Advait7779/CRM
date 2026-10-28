@@ -2,13 +2,13 @@ import PaginatedTable from '../../components/PaginatedTable'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { apiDownload, apiGet, apiGetAll, apiPost, apiPut } from '../../utils/api'
+import { apiDownload, apiGet, apiPost, apiPut } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import ThemeSelect from '../../components/ThemeSelect'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import { Plus, Search, Phone, MessageCircle, X, User, Globe, Share2, UserCheck, Download, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { LEAD_GROUPS, leadMatchesGroup, getLeadDate } from './leadData'
+import { LEAD_GROUPS, getLeadDate } from './leadData'
 import { localDateString } from '../../utils/date'
 
 const ACTION_STATUSES = [
@@ -165,6 +165,11 @@ export default function LeadsPage() {
   const [systemUsers, setSystemUsers] = useState([])
   const [leads, setLeads]         = useState([])
   const [loading, setLoading]     = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [summary, setSummary] = useState({ total: 0, won: 0, new: 0 })
+  const [reload, setReload] = useState(0)
   const [search, setSearch]       = useState(() => searchParams.get('search') || '')
   const [selectedGroup, setSelectedGroup] = useState('All')
   const [modal, setModal]         = useState(null) // null | { lead, isNew }
@@ -173,10 +178,22 @@ export default function LeadsPage() {
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
-    apiGetAll('/leads')
-      .then(data => setLeads(data))
-      .catch(err => toast.error('Failed to load leads: ' + err.message))
-      .finally(() => setLoading(false))
+    let active = true
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({ withTotal: '1', page: String(page), pageSize: String(pageSize), group: selectedGroup, search: search.trim() })
+      apiGet(`/leads?${query}`)
+        .then(data => { if (active) { setLeads(data.rows); setTotal(data.total) } })
+        .catch(err => { if (active) toast.error('Failed to load leads: ' + err.message) })
+        .finally(() => { if (active) setLoading(false) })
+    }, search ? 250 : 0)
+    return () => { active = false; clearTimeout(timer) }
+  }, [page, pageSize, selectedGroup, search, reload])
+
+  useEffect(() => {
+    apiGet('/leads/summary').then(setSummary).catch(() => {})
+  }, [reload])
+
+  useEffect(() => {
     apiGet('/system-users')
       .then(data => setSystemUsers(Array.isArray(data) ? data : []))
       .catch(() => toast.error('Could not load system users for lead assignment.'))
@@ -186,14 +203,10 @@ export default function LeadsPage() {
     if (isAdmin) apiGet('/justdial/products').then(data => setProductOptions(data.assignable)).catch(() => {})
   }, [isAdmin])
 
-  const filtered = leads.filter(l => {
-    const term = search.trim().toLowerCase()
-    const matchSearch = !term || [l.name, l.phone, l.company, l.service, l.justdialProduct].some(value => String(value || '').toLowerCase().includes(term))
-    return matchSearch && leadMatchesGroup(l, selectedGroup)
-  })
+  const filtered = leads
 
   const handleDownloadExcel = async () => {
-    if (!filtered.length || exporting) return
+    if (!total || exporting) return
     setExporting(true)
     try {
       const query = new URLSearchParams({ group: selectedGroup, search: search.trim() })
@@ -217,6 +230,7 @@ export default function LeadsPage() {
         setLeads(prev => [created, ...prev])
         toast.success('Lead created')
       }
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
@@ -228,6 +242,7 @@ export default function LeadsPage() {
       const updated = await apiPut(`/leads/${lead.id}`, { status: nextStatus })
       setLeads(prev => prev.map(l => l.id === lead.id ? updated : l))
       toast.success(`Status updated to "${nextStatus}"`)
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     }
@@ -241,6 +256,7 @@ export default function LeadsPage() {
       setLeads(prev => prev.map(l => l.id === confirmConvertLead.id ? { ...l, status: 'Converted' } : l))
       toast.success(`Converted ${confirmConvertLead.name} to active customer account!`)
       setConfirmConvertLead(null)
+      setReload(value => value + 1)
     } catch (err) {
       toast.error(err.message)
     } finally {
@@ -256,11 +272,11 @@ export default function LeadsPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 className="page-title">Lead Management</h1>
-          <p className="page-subtitle">{leads.length} total leads · {leads.filter(l => l.status === 'Won').length} won · {leads.filter(l => l.status === 'New').length} new</p>
+          <p className="page-subtitle">{summary.total} total leads · {summary.won} won · {summary.new} new</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn-secondary" onClick={handleDownloadExcel} disabled={!filtered.length || exporting} style={{ whiteSpace: 'nowrap', opacity: filtered.length && !exporting ? 1 : 0.5 }} title={`Download ${filtered.length} visible leads as a formatted Excel workbook`}>
-            <Download size={16} /> {exporting ? 'Preparing Excel…' : `Download Excel (${filtered.length})`}
+          <button type="button" className="btn-secondary" onClick={handleDownloadExcel} disabled={!total || exporting} style={{ whiteSpace: 'nowrap', opacity: total && !exporting ? 1 : 0.5 }} title={`Download ${total} visible leads as a formatted Excel workbook`}>
+            <Download size={16} /> {exporting ? 'Preparing Excel…' : `Download Excel (${total})`}
           </button>
           <button className="btn-primary" onClick={() => setModal({ lead: null, isNew: true })} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
             <Plus size={16} /> New Lead
@@ -272,11 +288,11 @@ export default function LeadsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', width: 280, minWidth: 200 }}>
           <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
-          <input className="input-field" style={{ paddingLeft: 34, height: 38 }} placeholder="Search leads..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="input-field" style={{ paddingLeft: 34, height: 38 }} placeholder="Search leads..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {LEAD_GROUPS.map(group => (
-            <button key={group} type="button" onClick={() => setSelectedGroup(group)} style={{
+            <button key={group} type="button" onClick={() => { setSelectedGroup(group); setPage(1) }} style={{
               padding: '6px 14px', borderRadius: 8, border: '1px solid',
               borderColor: selectedGroup === group ? '#6366f1' : 'var(--border-subtle)',
               background: selectedGroup === group ? 'rgba(99,102,241,0.12)' : 'transparent',
@@ -290,7 +306,7 @@ export default function LeadsPage() {
 
       {/* List View */}
       <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <PaginatedTable><table className="data-table" style={{ minWidth: 980 }}>
+        <PaginatedTable serverPagination={{ page, pageSize, total, onPageChange: setPage, onPageSizeChange: size => { setPageSize(size); setPage(1) } }}><table className="data-table" style={{ minWidth: 980 }}>
           <thead>
             <tr>
               <th>Name</th><th>Phone</th><th>Service</th><th>Source</th><th title="Original enquiry date for imported leads, or date added to CRM">Lead Date</th><th>Status</th><th>Executive</th><th>Follow-up</th><th>Action</th>
