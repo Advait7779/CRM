@@ -2,6 +2,7 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const { authMiddleware, checkRole } = require('../middleware/auth');
 const { canAccessLead, leadAccessWhere } = require('../services/justdialProducts');
+const { jsonReplacer, prepareData } = require('../utils/prismaData');
 const {
   sheetConfig, configurationIssues, listFacebookTabs, readFacebookTab,
   analyzeFacebookTab, rowToLead, processFacebookSheetLeads
@@ -11,6 +12,12 @@ const SALES = ['super_admin', 'director', 'sales_manager', 'sales_executive'];
 const ADMIN = ['super_admin', 'director'];
 const asyncHandler = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 const isAdmin = user => ADMIN.includes(user.role);
+const ACTION_STATUSES = new Set(['New', 'Connected', 'Future Prospect', 'Fake Enquiry',
+  'Interested', 'Not Interested', 'Follow-Up Required', "Didn't Answered"]);
+const rowKeyFor = (tab, row) => {
+  const id = String(row.values[0] || '').trim();
+  return tab.importable && /^(?:l:)?\d+$/.test(id) ? `id:${id}` : `row:${row.rowNumber}`;
+};
 
 function gidFrom(value) {
   const gid = Number(value);
@@ -28,7 +35,7 @@ function pagination(query) {
   return { page, pageSize, skip: (page - 1) * pageSize };
 }
 
-async function visibleTabRows(prisma, user, tab) {
+async function visibleTabRows(prisma, user, tab, spreadsheetId) {
   if (!isAdmin(user) && !tab.importable) {
     const error = new Error('This tab is not a mapped sales-lead source.');
     error.status = 403;
@@ -39,10 +46,15 @@ async function visibleTabRows(prisma, user, tab) {
   for (let start = 0; start < ids.length; start += 250) {
     const found = await prisma.leads.findMany({
       where: { facebookLeadId: { in: ids.slice(start, start + 250) } },
-      select: { id: true, facebookLeadId: true, status: true, exec: true, justdialProduct: true }
+      select: { id: true, facebookLeadId: true, status: true, exec: true, justdialProduct: true, convertedCustomerId: true }
     });
     for (const lead of found) existing.set(lead.facebookLeadId, lead);
   }
+  const annotations = await prisma.facebookSheetRowStatuses.findMany({
+    where: { spreadsheetId, sheetGid: tab.gid },
+    select: { rowKey: true, status: true }
+  });
+  const statuses = new Map(annotations.map(row => [row.rowKey, row.status]));
   return tab.rows.flatMap(({ rowNumber, values }) => {
     let lead = null;
     if (tab.importable) {
@@ -51,7 +63,9 @@ async function visibleTabRows(prisma, user, tab) {
     }
     const crm = lead ? existing.get(lead.facebookLeadId) || null : null;
     if (!isAdmin(user) && (!lead || !canAccessLead(user, crm || lead))) return [];
-    return [{ rowNumber, values, crm: crm && { id: crm.id, status: crm.status, exec: crm.exec },
+    const rowKey = rowKeyFor(tab, { rowNumber, values });
+    return [{ rowNumber, rowKey, values, status: crm ? jsonReplacer('status', crm.status) : statuses.get(rowKey) || 'New',
+      crm: crm && { id: crm.id, status: jsonReplacer('status', crm.status), exec: crm.exec, convertedCustomerId: crm.convertedCustomerId },
       lead: lead && { id: lead.facebookLeadId, name: lead.name, phone: lead.phone, service: lead.service,
         platform: lead.facebookPlatform, submittedAt: lead.facebookSubmittedAt, product: lead.justdialProduct } }];
   });
@@ -156,13 +170,13 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     if (configurationIssues(config).length) return res.status(503).json({ message: 'Facebook sheet connection is not configured on the server.' });
     const tab = await getTab(gid);
     const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
-    const available = await visibleTabRows(prisma, req.user, tab);
-    const rows = search ? available.filter(row => [...row.values, row.crm?.status, row.crm?.exec]
+    const available = await visibleTabRows(prisma, req.user, tab, config.spreadsheetId);
+    const rows = search ? available.filter(row => [...row.values, row.status, row.crm?.exec]
       .some(value => String(value ?? '').toLowerCase().includes(search))) : available;
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Sheet rows', { views: [{ state: 'frozen', xSplit: 2, ySplit: 1 }] });
-    sheet.addRow(['Sheet row', 'CRM status', ...tab.headers]);
-    rows.forEach(row => sheet.addRow([row.rowNumber, row.crm?.status || 'Sheet only', ...tab.headers.map((_, index) => String(row.values[index] ?? ''))]));
+    sheet.addRow(['Sheet row', 'Lead status', ...tab.headers]);
+    rows.forEach(row => sheet.addRow([row.rowNumber, row.status, ...tab.headers.map((_, index) => String(row.values[index] ?? ''))]));
     sheet.getRow(1).font = { bold: true };
     sheet.getColumn(1).width = 12;
     sheet.getColumn(2).width = 20;
@@ -180,9 +194,9 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     const config = sheetConfig(env);
     if (configurationIssues(config).length) return res.status(503).json({ message: 'Facebook sheet connection is not configured on the server.' });
     const tab = await getTab(gid, req.query.refresh === '1');
-    const rows = await visibleTabRows(prisma, req.user, tab);
+    const rows = await visibleTabRows(prisma, req.user, tab, config.spreadsheetId);
     const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
-    const visible = search ? rows.filter(row => [...row.values, row.crm?.status, row.crm?.exec]
+    const visible = search ? rows.filter(row => [...row.values, row.status, row.crm?.exec]
       .some(value => String(value ?? '').toLowerCase().includes(search))) : rows;
     const { page, pageSize, skip } = pagination(req.query);
     const mappedCount = rows.filter(row => row.crm).length;
@@ -196,6 +210,34 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     const result = await processFacebookSheetLeads(prisma, { env, fetchImpl, gid });
     if (!result.enabled) return res.status(503).json({ message: 'Facebook sheet connection is not configured on the server.' });
     res.json(result);
+  }));
+
+  router.put('/tabs/:gid/rows/:rowNumber/status', asyncHandler(async (req, res) => {
+    const gid = gidFrom(req.params.gid);
+    const rowNumber = Number(req.params.rowNumber);
+    const status = String(req.body?.status || '');
+    if (!Number.isSafeInteger(rowNumber) || rowNumber < 1 || !ACTION_STATUSES.has(status)) {
+      return res.status(400).json({ message: 'Invalid sheet row or lead status.' });
+    }
+    const config = sheetConfig(env);
+    if (configurationIssues(config).length) return res.status(503).json({ message: 'Facebook sheet connection is not configured on the server.' });
+    const tab = await getTab(gid);
+    const row = (await visibleTabRows(prisma, req.user, tab, config.spreadsheetId))
+      .find(candidate => candidate.rowNumber === rowNumber);
+    if (!row) return res.status(404).json({ message: 'Sheet row not found.' });
+    if (row.crm) {
+      if (row.crm.status === 'Converted' || row.crm.convertedCustomerId) {
+        return res.status(409).json({ message: 'A converted lead cannot be given another status.' });
+      }
+      await prisma.leads.update({ where: { id: row.crm.id }, data: prepareData('leads', { status }) });
+    } else {
+      await prisma.facebookSheetRowStatuses.upsert({
+        where: { spreadsheetId_sheetGid_rowKey: { spreadsheetId: config.spreadsheetId, sheetGid: gid, rowKey: row.rowKey } },
+        create: { spreadsheetId: config.spreadsheetId, sheetGid: gid, rowKey: row.rowKey, status },
+        update: { status, updatedAt: new Date() }
+      });
+    }
+    res.json({ rowNumber, status });
   }));
 
   return router;

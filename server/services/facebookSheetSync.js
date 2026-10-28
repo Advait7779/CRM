@@ -296,12 +296,18 @@ async function processFacebookSheetLeads(prisma, { env = process.env, fetchImpl 
     throw error;
   }
   const candidates = tab.rows.filter(({ values }) => String(values[0] || '').trim());
+  const savedStatuses = new Map((await prisma.facebookSheetRowStatuses.findMany({
+    where: { spreadsheetId: config.spreadsheetId, sheetGid: tab.gid },
+    select: { rowKey: true, status: true }
+  })).map(row => [row.rowKey, row.status]));
   const normalized = new Map();
   let skipped = 0;
   for (const { values: row } of candidates.reverse()) {
     try {
       const data = rowToLead(tab.headers, row, tab);
       if (!data) { skipped += 1; continue; }
+      const savedStatus = savedStatuses.get(`id:${data.facebookLeadId}`);
+      if (savedStatus) data.status = savedStatus;
       normalized.set(data.facebookLeadId, prepareData('leads', data, { create: true }));
     } catch (error) {
       skipped += 1;

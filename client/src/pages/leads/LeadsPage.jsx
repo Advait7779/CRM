@@ -17,7 +17,8 @@ const ACTION_STATUSES = [
   'Fake Enquiry',
   'Interested',
   'Not Interested',
-  'Follow-Up Required'
+  'Follow-Up Required',
+  "Didn't Answered"
 ]
 const LEAD_STATUSES = ['New', ...ACTION_STATUSES]
 const LEAD_SOURCES  = ['Website', 'Facebook', 'WhatsApp', 'Reference', 'Call', 'Justdial']
@@ -37,6 +38,7 @@ const STATUS_COLOR = {
   'Interested': '#10b981',
   'Not Interested': '#f97316',
   'Follow-Up Required': '#f59e0b',
+  "Didn't Answered": '#f97316',
   'Contacted': '#c084fc',
   'Demo Given': '#f59e0b',
   'Quotation Sent': '#fb923c',

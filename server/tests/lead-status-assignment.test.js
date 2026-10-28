@@ -89,7 +89,7 @@ test('lead statuses persist, converted leads stay converted, and customer assign
   assert.equal(systemUsers.status, 200);
   assert.deepEqual(systemUsers.data.map(user => user.name), ['Admin', 'Maya', 'Ravi']);
 
-  for (const status of ['Connected', 'Future Prospect', 'Fake Enquiry', 'Interested', 'Not Interested', 'Follow-Up Required']) {
+  for (const status of ['Connected', 'Future Prospect', 'Fake Enquiry', 'Interested', 'Not Interested', 'Follow-Up Required', "Didn't Answered"]) {
     const saved = await request('/leads/11', { method: 'PUT', body: { status, exec: 'Maya' } });
     assert.equal(saved.status, 200);
     assert.equal(saved.data.status, status);

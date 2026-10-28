@@ -22,6 +22,7 @@ const users = new Map([
 ]);
 const saved = new Map();
 const links = new Set();
+const rowStatuses = new Map();
 const prisma = {
   users: { async findUnique({ where }) { return users.get(where.id) || null; } },
   leads: {
@@ -33,6 +34,11 @@ const prisma = {
       return rows.slice(skip, skip + take);
     },
     async count({ where }) { return (await this.findMany({ where })).length; },
+    async update({ where, data }) {
+      const row = [...saved.values()].find(lead => lead.id === where.id);
+      Object.assign(row, data);
+      return row;
+    },
     async createMany({ data }) {
       let count = 0;
       for (const row of data) {
@@ -53,6 +59,14 @@ const prisma = {
       return { count };
     },
     async count({ where }) { return [...links].filter(key => key.startsWith(`${where.sheetGid}:`)).length; }
+  },
+  facebookSheetRowStatuses: {
+    async findMany({ where }) { return [...rowStatuses.entries()].filter(([key]) => key.startsWith(`${where.sheetGid}:`))
+      .map(([key, status]) => ({ rowKey: key.slice(String(where.sheetGid).length + 1), status })); },
+    async upsert({ where, create }) {
+      rowStatuses.set(`${where.spreadsheetId_sheetGid_rowKey.sheetGid}:${create.rowKey}`, create.status);
+      return create;
+    }
   }
 };
 require.cache[require.resolve('../config/prisma')].exports = { ...config, prisma };
@@ -85,9 +99,10 @@ test('tab browsing respects sales permissions; only admins can sync mapped Meta 
   const server = app.listen(0, '127.0.0.1');
   t.after(() => new Promise(resolve => server.close(resolve)));
   await new Promise(resolve => server.once('listening', resolve));
-  const request = async (id, path, method = 'GET') => {
+  const request = async (id, path, method = 'GET', body) => {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/facebook-sheet${path}`, {
-      method, headers: { Authorization: `Bearer ${jwt.sign({ id, tokenVersion: 0 }, process.env.JWT_SECRET)}` }
+      method, headers: { Authorization: `Bearer ${jwt.sign({ id, tokenVersion: 0 }, process.env.JWT_SECRET)}`, 'Content-Type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body) } : {})
     });
     return { status: response.status, body: await response.json() };
   };
@@ -111,6 +126,12 @@ test('tab browsing respects sales permissions; only admins can sync mapped Meta 
   assert.equal(sheetReads, firstReadCount + 1);
   assert.equal((await request(2, '/tabs/590930498')).status, 403);
   assert.equal((await request(1, '/tabs/590930498')).body.total, 1);
+  assert.equal((await request(1, '/tabs/590930498/rows/2/status', 'PUT', { status: "Didn't Answered" })).status, 200);
+  assert.equal((await request(1, '/tabs/590930498')).body.rows[0].status, "Didn't Answered");
+  assert.equal((await request(2, '/tabs/1497736270/rows/2/status', 'PUT', { status: 'Interested' })).status, 200);
+  assert.equal((await request(2, '/tabs/1497736270')).body.rows[0].status, 'Interested');
+  assert.equal((await request(2, '/tabs/1497736270/rows/3/status', 'PUT', { status: 'Interested' })).status, 404);
+  assert.equal((await request(1, '/tabs/1497736270/rows/3/status', 'PUT', { status: 'Bogus' })).status, 400);
   assert.equal((await request(2, '/tabs/1497736270/sync', 'POST')).status, 403);
   assert.equal((await request(1, '/tabs/590930498/sync', 'POST')).status, 422);
 
@@ -118,6 +139,9 @@ test('tab browsing respects sales permissions; only admins can sync mapped Meta 
   assert.equal(synced.status, 200);
   assert.equal(synced.body.imported, 2);
   assert.equal(synced.body.mapped, 2);
+  assert.equal(saved.get('l:201').status, 'Interested');
+  assert.equal((await request(1, '/tabs/1497736270/rows/2/status', 'PUT', { status: "Didn't Answered" })).status, 200);
+  assert.equal(saved.get('l:201').status, 'Didnt_Answered');
   assert.equal((await request(1, '/crm')).body.total, 2);
   assert.equal((await request(2, '/crm')).body.total, 1);
 

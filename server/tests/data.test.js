@@ -19,7 +19,8 @@ test('API display enums are converted in both directions', () => {
     ['Fake Enquiry', 'Fake_Enquiry'],
     ['Interested', 'Interested'],
     ['Not Interested', 'Not_Interested'],
-    ['Follow-Up Required', 'Follow_Up_Required']
+    ['Follow-Up Required', 'Follow_Up_Required'],
+    ["Didn't Answered", 'Didnt_Answered']
   ]) {
     assert.equal(prepareData('leads', { status: label }).status, stored);
     assert.equal(jsonReplacer('status', stored), label);

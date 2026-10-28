@@ -147,7 +147,7 @@ test('mapping preserves source date and platform, normalizes phone and service',
 test('sync imports both platforms once and preserves CRM status on repeat scans', async () => {
   const saved = new Map();
   const links = new Set();
-  const prisma = { leads: {
+  const prisma = { facebookSheetRowStatuses: { async findMany() { return []; } }, leads: {
     async findMany({ where }) { return [...saved.values()].filter(lead => where.facebookLeadId.in.includes(lead.facebookLeadId)); },
     async createMany({ data }) {
       let count = 0;

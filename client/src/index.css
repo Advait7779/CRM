@@ -159,6 +159,30 @@ select:disabled,
   overflow: visible !important;
 }
 
+.facebook-sheet-table-scroll {
+  max-width: 100%;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.facebook-sheet-table-scroll .table-pagination-surface {
+  width: max-content;
+  min-width: 100%;
+  overflow: visible;
+}
+
+.facebook-sheet-table-scroll .data-table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.facebook-sheet-table-scroll .data-table th,
+.facebook-sheet-table-scroll .data-table td {
+  max-width: 280px;
+  min-width: 110px;
+  overflow-wrap: anywhere;
+}
+
 .table-pagination-top {
   display: flex;
   justify-content: flex-end;

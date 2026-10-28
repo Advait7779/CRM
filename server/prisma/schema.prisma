@@ -275,6 +275,16 @@ model FacebookLeadTabs {
   @@index([spreadsheetId, sheetGid], map: "facebook_lead_tabs_sheet")
 }
 
+model FacebookSheetRowStatuses {
+  spreadsheetId String   @db.VarChar(255)
+  sheetGid      Int
+  rowKey        String   @db.VarChar(255)
+  status        String   @db.VarChar(50)
+  updatedAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([spreadsheetId, sheetGid, rowKey])
+}
+
 model Notifications {
   id        Int      @id @default(autoincrement())
   userId    Int?
@@ -620,6 +630,7 @@ enum enum_Leads_status {
   Interested
   Not_Interested     @map("Not Interested")
   Follow_Up_Required @map("Follow-Up Required")
+  Didnt_Answered     @map("Didn't Answered")
 }
 
 enum enum_Payrolls_status {

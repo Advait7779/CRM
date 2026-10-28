@@ -17,6 +17,13 @@ const formatDate = value => {
   return date && !Number.isNaN(date.getTime()) ? dateFormatter.format(date) : '—'
 }
 const text = value => String(value ?? '')
+const ACTION_STATUSES = ['Connected', 'Future Prospect', 'Fake Enquiry', 'Interested',
+  'Not Interested', 'Follow-Up Required', "Didn't Answered"]
+const STATUS_COLOR = {
+  New: '#60a5fa', Connected: '#6366f1', 'Future Prospect': '#8b5cf6',
+  'Fake Enquiry': '#ef4444', Interested: '#10b981', 'Not Interested': '#f97316',
+  'Follow-Up Required': '#f59e0b', "Didn't Answered": '#f97316', Converted: '#10b981'
+}
 const connectionErrorMessage = error => error?.message === 'API endpoint not found.'
   ? 'The Facebook Leads API is not deployed on the CRM server yet. Redeploy the server from the latest main branch.'
   : error?.message || 'Could not reach the CRM server.'
@@ -50,6 +57,7 @@ export default function FacebookLeadsPage() {
   const [productOptions, setProductOptions] = useState([])
   const [convertLead, setConvertLead] = useState(null)
   const [converting, setConverting] = useState(false)
+  const [savingStatusKey, setSavingStatusKey] = useState(null)
   const refreshNextRequest = useRef(false)
   const editOptionsRequest = useRef(null)
 
@@ -154,6 +162,62 @@ export default function FacebookLeadsPage() {
     finally { setConverting(false) }
   }
 
+  const changeStatus = async (lead, nextStatus, rowNumber = null) => {
+    const current = lead.status
+    if (!nextStatus || nextStatus === current || savingStatusKey) return
+    const key = rowNumber === null ? `crm:${lead.id}` : `sheet:${selected}:${rowNumber}`
+    setSavingStatusKey(key)
+    try {
+      if (rowNumber === null) await apiPut(`/leads/${lead.id}`, { status: nextStatus })
+      else await apiPut(`/facebook-sheet/tabs/${selected}/rows/${rowNumber}/status`, { status: nextStatus })
+      setData(previous => {
+        if (!previous || (rowNumber === null ? Boolean(previous.tab) : String(previous.tab?.gid) !== selected)) return previous
+        return { ...previous, rows: previous.rows.map(row =>
+          rowNumber === null ? row.id === lead.id ? { ...row, status: nextStatus } : row
+            : row.rowNumber === rowNumber ? { ...row, status: nextStatus,
+              crm: row.crm ? { ...row.crm, status: nextStatus } : null } : row) }
+      })
+      toast.success(`Status updated to "${nextStatus}"`)
+    } catch (err) { toast.error(err.message) }
+    finally { setSavingStatusKey(null) }
+  }
+
+  const actionControls = (lead, rowNumber = null) => {
+    const linked = rowNumber === null || Boolean(lead.crm)
+    const crm = rowNumber === null ? lead : lead.crm
+    const status = lead.status || 'New'
+    const converted = crm?.status === 'Converted' || Boolean(crm?.convertedCustomerId)
+    const color = STATUS_COLOR[status] || '#6366f1'
+    const name = rowNumber === null ? lead.name : lead.lead?.name || `sheet row ${rowNumber}`
+    return <div style={{ display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}>
+      {isAdmin && <button type="button" onClick={() => linked && openLead(crm.id)} disabled={!linked || openingLeadId === crm?.id}
+        title={linked ? 'Edit lead and assign an executive' : 'Sync this row into CRM to edit it'}
+        aria-label={`Edit ${name} and assign an executive`}
+        style={{ width: 28, height: 28, borderRadius: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: '#6366f1', cursor: linked ? 'pointer' : 'not-allowed', flexShrink: 0 }}>
+        <Pencil size={14} />
+      </button>}
+      {!converted && <ThemeSelect value={status} disabled={savingStatusKey !== null}
+        onChange={event => changeStatus(lead, event.target.value, rowNumber)}
+        aria-label={`Status for ${name}`}
+        style={{ height: '26px', width: '92px', minWidth: '92px', maxWidth: '92px', fontSize: '11px', fontWeight: 600,
+          borderRadius: '6px', padding: '0 18px 0 7px', background: `${color}12`, border: `1px solid ${color}40`, color }}>
+        {!ACTION_STATUSES.includes(status) && <option value={status}>{status}</option>}
+        {ACTION_STATUSES.map(option => <option key={option} value={option}>{option}</option>)}
+      </ThemeSelect>}
+      {!converted ? <button type="button" onClick={() => linked && setConvertLead({ ...crm, name })} disabled={!linked}
+        title={linked ? 'Convert Lead to Active Customer' : 'Sync this row into CRM to convert it'}
+        aria-label={`Convert ${name} to customer`}
+        style={{ width: 28, height: 28, borderRadius: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)',
+          cursor: linked ? 'pointer' : 'not-allowed', transition: 'all 0.15s ease', flexShrink: 0 }}>
+        <UserCheck size={14} style={{ color: '#10b981' }} />
+      </button> : <span title="Lead is already converted to an active customer"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: '#10b981',
+          background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)',
+          padding: '4px 7px', borderRadius: 7, whiteSpace: 'nowrap', flexShrink: 0 }}><UserCheck size={12} /> Converted</span>}
+    </div>
+  }
+
   return <div className="animate-fade-in">
     <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
       <div>
@@ -200,13 +264,13 @@ export default function FacebookLeadsPage() {
     </div>
 
     {selected !== 'crm' && data?.tab && <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--text-secondary)' }}>
-      {data.tab.importable ? `${data.mappedCount} leads from this tab linked to CRM.` : `Read-only tab. ${data.tab.reason || ''}`}
+      {data.tab.importable ? `${data.mappedCount} leads from this tab linked to CRM.` : `This tab cannot be synced to CRM. ${data.tab.reason || ''} Row statuses can still be marked here.`}
       {' '}Last fetched: {formatDate(data.fetchedAt)}
     </div>}
     {error && <div style={{ padding: 16, marginBottom: 16, borderRadius: 10, color: '#b91c1c', background: 'rgba(239,68,68,0.1)' }}>{error}</div>}
 
-    <div className="table-pagination-shell" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <div className="table-pagination-surface" style={{ minWidth: selected === 'crm' ? 980 : Math.max(980, (data?.headers?.length || 6) * 155) }}>
+    <div className="table-pagination-shell facebook-sheet-table-scroll">
+      <div className="table-pagination-surface" style={{ minWidth: selected === 'crm' ? 980 : undefined }}>
         <table className="data-table">
           {selected === 'crm' ? <>
             <thead><tr><th>Name</th><th>Phone</th><th>Service</th><th>Platform</th><th>Lead Date</th><th>Status</th><th>Executive</th><th>Origin</th><th>Action</th></tr></thead>
@@ -215,17 +279,15 @@ export default function FacebookLeadsPage() {
               <td>{lead.facebookPlatform === 'ig' ? 'Instagram' : 'Facebook'}</td>
               <td>{formatDate(lead.facebookSubmittedAt || lead.createdAt)}</td><td>{lead.status}</td><td>{lead.exec || '—'}</td>
               <td>{lead.facebookLeadId ? 'Google Sheet' : 'CRM entry'}</td>
-              <td style={{ whiteSpace: 'nowrap' }}>
-                <button type="button" className="btn-secondary" onClick={() => openLead(lead.id)} disabled={openingLeadId === lead.id} title="Edit Facebook lead"><Pencil size={14} /> Edit</button>
-                {lead.status !== 'Converted' && !lead.convertedCustomerId && <button type="button" className="btn-secondary" onClick={() => setConvertLead(lead)} title="Convert to customer" style={{ marginLeft: 6 }}><UserCheck size={14} /> Convert</button>}
-              </td>
+              <td>{actionControls(lead)}</td>
             </tr>)}</tbody>
           </> : <>
-            <thead><tr><th>#</th><th>CRM</th>{(data?.headers || []).map((header, index) => <th key={index} title={text(header)} style={{ maxWidth: 240 }}>{header}</th>)}</tr></thead>
+            <thead><tr><th>#</th><th>CRM</th>{(data?.headers || []).map((header, index) => <th key={index} title={text(header)}>{header}</th>)}<th>Action</th></tr></thead>
             <tbody>{(data?.rows || []).map(row => <tr key={row.rowNumber}>
               <td>{row.rowNumber}</td>
-              <td style={{ whiteSpace: 'nowrap' }}>{row.crm ? <button type="button" className="btn-secondary" onClick={() => openLead(row.crm.id)} disabled={openingLeadId === row.crm.id} title="Edit CRM lead">{row.crm.status || 'In CRM'}</button> : 'Sheet only'}</td>
-              {(data?.headers || []).map((_, index) => <td key={index} title={text(row.values[index])} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text(row.values[index]) || '—'}</td>)}
+              <td style={{ whiteSpace: 'nowrap' }}>{row.crm ? 'In CRM' : 'Sheet only'}</td>
+              {(data?.headers || []).map((_, index) => <td key={index} title={text(row.values[index])}>{text(row.values[index]) || '—'}</td>)}
+              <td>{actionControls(row, row.rowNumber)}</td>
             </tr>)}</tbody>
           </>}
         </table>

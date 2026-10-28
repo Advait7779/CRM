@@ -25,6 +25,7 @@ const ENUM_TO_PRISMA = new Map([
   ['Fake Enquiry', 'Fake_Enquiry'],
   ['Not Interested', 'Not_Interested'],
   ['Follow-Up Required', 'Follow_Up_Required'],
+  ["Didn't Answered", 'Didnt_Answered'],
   ['Partially Paid', 'Partially_Paid'],
   ['Pending Approval', 'Pending_Approval'],
   ['Not Completed', 'Not_Completed']
