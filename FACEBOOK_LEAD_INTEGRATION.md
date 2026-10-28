@@ -22,7 +22,11 @@ This connection does not need a Google Cloud service account or a JSON key. It u
 6. Deploy the CRM and apply migrations `20261027_facebook_lead_sync` and `20261027_facebook_lead_tabs` through the normal server start or `npm run migrate --prefix server`. Restart the server. A first read of the automatic tab starts about 15 seconds later; check server logs for the import count.
 7. Open **Facebook Leads** in the sidebar. Confirm the tab picker lists the workbook's tabs. Select a tab to inspect it; use **Sync tab into CRM** only for a mapped Meta lead tab. The initial October source tab contained 41 leads when inspected on 27 October 2026 (29 `fb`, 12 `ig`), so its first import should be close to 41 unless rows were added, deleted, or invalid.
 
-The Apps Script endpoint accepts only secret-authenticated POST requests for listing tabs and reading at most 250 rows per request. It never writes to the spreadsheet. CRM staff still need their CRM login, and raw unmapped tab access remains restricted to administrators. The endpoint URL alone cannot read rows without the secret.
+The Apps Script endpoint accepts only secret-authenticated POST requests for listing tabs and reading at most 1000 rows per request. It never writes to the spreadsheet. CRM staff still need their CRM login, and raw unmapped tab access remains restricted to administrators. The endpoint URL alone cannot read rows without the secret.
+
+### Updating an existing Apps Script deployment for faster tabs
+
+After updating the CRM server, replace the existing Apps Script project's `Code.gs` with the current [`server/googleAppsScriptFacebookLeads.gs`](server/googleAppsScriptFacebookLeads.gs), save, then choose **Deploy → Manage deployments → Edit → New version → Deploy**. Keep the same Script Property and web app URL. The updated script lists tabs without scanning every tab for its row count and reads up to 1000 rows per request. The CRM remains compatible with the earlier 250-row script until you deploy the new version. The browser remembers the tab names for quick return visits; the server briefly caches tab data, and **Refresh** requests a new copy.
 
 ## Alternative: service account
 

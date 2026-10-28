@@ -65,12 +65,13 @@ const metaRows = [metaHeader,
 ];
 const otherRows = [['ID', 'Name', 'Phone'], ['42', 'Website customer', '9000000000']];
 let sheetReads = 0;
+let tabListReads = 0;
 async function fakeFetch(url) {
   if (url === 'https://oauth2.googleapis.com/token') return { ok: true, json: async () => ({ access_token: 'test-token', expires_in: 3600 }) };
-  if (url.includes('?fields=')) return { ok: true, json: async () => ({ sheets: [
+  if (url.includes('?fields=')) { tabListReads += 1; return { ok: true, json: async () => ({ sheets: [
     { properties: { sheetId: 1497736270, title: "Allinone Leads - Oct'26", index: 0, gridProperties: { columnCount: 26 } } },
     { properties: { sheetId: 590930498, title: 'Website Cms', index: 1, gridProperties: { columnCount: 26 } } }
-  ] }) };
+  ] }) }; }
   const decoded = decodeURIComponent(url);
   sheetReads += 1;
   return { ok: true, json: async () => ({ values: decoded.includes('Website Cms') ? otherRows : metaRows }) };
@@ -95,6 +96,10 @@ test('tab browsing respects sales permissions; only admins can sync mapped Meta 
   const tabs = await request(1, '/tabs');
   assert.equal(tabs.status, 200);
   assert.equal(tabs.body.tabs.length, 2);
+  assert.equal((await request(1, '/tabs')).status, 200);
+  assert.equal(tabListReads, 1);
+  assert.equal((await request(1, '/tabs?refresh=1')).status, 200);
+  assert.equal(tabListReads, 2);
   const meta = await request(2, '/tabs/1497736270');
   assert.equal(meta.status, 200);
   assert.equal(meta.body.total, 1);

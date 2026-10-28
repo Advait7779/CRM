@@ -27,6 +27,8 @@ const MACHINE_FIELDS = new Set(['processing_status', 'whatsapp_status', 'sms_sta
 const BRIDGE_PAGE_SIZE = 250;
 const BRIDGE_CONCURRENCY = 4;
 let cachedToken = null;
+const tabListCache = new WeakMap();
+const TAB_LIST_TTL_MS = 10 * 60_000;
 
 function sheetConfig(env = process.env) {
   return {
@@ -106,7 +108,7 @@ async function bridgeRequest(config, action, details = {}, fetchImpl = fetch) {
   return data;
 }
 
-async function listFacebookTabs(config, fetchImpl = fetch) {
+async function fetchFacebookTabs(config, fetchImpl) {
   if (config.webhookUrl) {
     const data = await bridgeRequest(config, 'listTabs', {}, fetchImpl);
     if (!Array.isArray(data.tabs) || data.tabs.length > 200 || data.tabs.some(tab =>
@@ -115,7 +117,8 @@ async function listFacebookTabs(config, fetchImpl = fetch) {
       throw new Error('Facebook sheet Apps Script returned invalid tab metadata.');
     }
     return data.tabs.map(tab => ({ gid: tab.gid, title: tab.title, index: tab.index,
-      rowCount: tab.rowCount ?? 0, columnCount: tab.columnCount ?? 0 })).sort((a, b) => a.index - b.index);
+      rowCount: tab.rowCount ?? 0, columnCount: tab.columnCount ?? 0,
+      maxPageSize: tab.maxPageSize === 1000 ? 1000 : BRIDGE_PAGE_SIZE })).sort((a, b) => a.index - b.index);
   }
   const token = await accessToken(config, fetchImpl);
   const headers = { Authorization: `Bearer ${token}` };
@@ -130,6 +133,24 @@ async function listFacebookTabs(config, fetchImpl = fetch) {
   })).sort((a, b) => a.index - b.index);
 }
 
+async function listFacebookTabs(config, fetchImpl = fetch, refresh = false) {
+  let byConfig = tabListCache.get(fetchImpl);
+  if (!byConfig) { byConfig = new Map(); tabListCache.set(fetchImpl, byConfig); }
+  const key = `${config.spreadsheetId}:${config.webhookUrl}:${config.readSecret}`;
+  const cached = byConfig.get(key);
+  if (!refresh && cached && (cached.pending || cached.expiresAt > Date.now())) return cached.pending || cached.tabs;
+  const pending = fetchFacebookTabs(config, fetchImpl);
+  byConfig.set(key, { pending });
+  try {
+    const tabs = await pending;
+    if (byConfig.get(key)?.pending === pending) byConfig.set(key, { tabs, expiresAt: Date.now() + TAB_LIST_TTL_MS });
+    return tabs;
+  } catch (error) {
+    if (byConfig.get(key)?.pending === pending) byConfig.delete(key);
+    throw error;
+  }
+}
+
 function columnLetter(index) {
   let number = index + 1;
   let result = '';
@@ -142,12 +163,14 @@ async function readFacebookTab(config, gid, fetchImpl = fetch) {
   const tab = tabs.find(item => item.gid === gid);
   if (!tab) { const error = new Error('Spreadsheet tab not found.'); error.status = 404; throw error; }
   if (config.webhookUrl) {
+    const pageSize = tab.maxPageSize || BRIDGE_PAGE_SIZE;
     const readPage = async startRow => {
-      const data = await bridgeRequest(config, 'readTab', { gid, startRow, limit: BRIDGE_PAGE_SIZE }, fetchImpl);
-      if (!Array.isArray(data.values) || data.values.length > BRIDGE_PAGE_SIZE || data.values.some(row =>
+      const data = await bridgeRequest(config, 'readTab', { gid, startRow, limit: pageSize }, fetchImpl);
+      if (!Array.isArray(data.values) || data.values.length > pageSize || data.values.some(row =>
         !Array.isArray(row) || row.length > 52 || row.some(value => typeof value !== 'string'))
         || typeof data.hasMore !== 'boolean'
         || !Number.isSafeInteger(data.nextRow) || data.nextRow !== startRow + data.values.length
+        || (data.lastRow !== undefined && (!Number.isSafeInteger(data.lastRow) || data.lastRow < 0))
         || (data.hasMore && !data.values.length)) {
         throw new Error('Facebook sheet Apps Script returned invalid tab rows.');
       }
@@ -155,12 +178,18 @@ async function readFacebookTab(config, gid, fetchImpl = fetch) {
     };
     const values = [];
     let startRow = 1;
-    // listTabs reports the last populated row, so its chunks can be read concurrently.
-    // Keep reading if rows were added after that metadata request.
-    const knownRows = Number.isSafeInteger(tab.rowCount) ? Math.max(0, tab.rowCount) : 0;
+    let knownRows = Number.isSafeInteger(tab.rowCount) ? Math.max(0, tab.rowCount) : 0;
+    if (!knownRows) {
+      const first = await readPage(startRow);
+      values.push(...first.values);
+      if (!first.hasMore) return { ...tab, values };
+      startRow = first.nextRow;
+      knownRows = first.lastRow || 0;
+    }
+    // Known row counts allow the remaining chunks to be read concurrently.
     for (let batch = 0; batch < 1000 && startRow <= knownRows; batch += 1) {
-      const starts = Array.from({ length: Math.min(BRIDGE_CONCURRENCY, Math.ceil((knownRows - startRow + 1) / BRIDGE_PAGE_SIZE)) },
-        (_, index) => startRow + index * BRIDGE_PAGE_SIZE);
+      const starts = Array.from({ length: Math.min(BRIDGE_CONCURRENCY, Math.ceil((knownRows - startRow + 1) / pageSize)) },
+        (_, index) => startRow + index * pageSize);
       const pages = await Promise.all(starts.map(readPage));
       for (const page of pages) values.push(...page.values);
       startRow = pages.at(-1).nextRow;

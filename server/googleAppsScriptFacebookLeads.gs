@@ -23,7 +23,7 @@ function doPost(e) {
     if (request.action === 'listTabs') {
       const tabs = workbook.getSheets().filter(sheet => !sheet.isSheetHidden()).map(sheet => ({
         gid: sheet.getSheetId(), title: sheet.getName(), index: sheet.getIndex() - 1,
-        rowCount: sheet.getLastRow(), columnCount: Math.min(52, sheet.getLastColumn())
+        maxPageSize: 1000
       }));
       return facebookJson_({ success: true, tabs });
     }
@@ -33,7 +33,7 @@ function doPost(e) {
       const startRow = Number(request.startRow);
       const limit = Number(request.limit);
       if (!Number.isSafeInteger(gid) || gid < 0 || !Number.isSafeInteger(startRow) || startRow < 1
-        || !Number.isSafeInteger(limit) || limit < 1 || limit > 250) {
+        || !Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
         return facebookJson_({ success: false, error: 'Invalid tab request.' });
       }
       const sheet = workbook.getSheetById(gid);
@@ -45,7 +45,7 @@ function doPost(e) {
       const count = Math.min(limit, Math.max(0, lastRow - startRow + 1));
       const values = count && width ? sheet.getRange(startRow, 1, count, width).getDisplayValues() : [];
       const nextRow = startRow + values.length;
-      return facebookJson_({ success: true, values, nextRow, hasMore: nextRow <= lastRow });
+      return facebookJson_({ success: true, values, nextRow, lastRow, hasMore: nextRow <= lastRow });
     }
     return facebookJson_({ success: false, error: 'Unknown action.' });
   } catch {

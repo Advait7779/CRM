@@ -7,12 +7,13 @@ const vm = require('node:vm');
 test('Apps Script bridge authorizes reads, lists visible tabs and pages rows', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'googleAppsScriptFacebookLeads.gs'), 'utf8');
   let workbookOpens = 0;
+  let lastRowReads = 0;
   const sheet = {
     isSheetHidden: () => false,
     getSheetId: () => 1497736270,
     getName: () => 'October leads',
     getIndex: () => 1,
-    getLastRow: () => 3,
+    getLastRow: () => { lastRowReads += 1; return 3; },
     getLastColumn: () => 2,
     getRange: (row, column, count, width) => {
       assert.equal(column, 1);
@@ -35,13 +36,17 @@ test('Apps Script bridge authorizes reads, lists visible tabs and pages rows', (
   assert.equal(invoke({ action: 'listTabs', secret: 'wrong' }).error, 'Unauthorized.');
   assert.equal(workbookOpens, 0);
   const secret = 'test-facebook-script-secret-at-least-32-characters';
-  assert.equal(invoke({ action: 'listTabs', secret }).tabs.length, 1);
+  const tabs = invoke({ action: 'listTabs', secret }).tabs;
+  assert.equal(tabs.length, 1);
+  assert.equal(tabs[0].maxPageSize, 1000);
+  assert.equal(lastRowReads, 0);
   const first = invoke({ action: 'readTab', secret, gid: 1497736270, startRow: 1, limit: 2 });
   assert.equal(first.values.length, 2);
   assert.equal(first.hasMore, true);
   assert.equal(first.nextRow, 3);
+  assert.equal(first.lastRow, 3);
   const second = invoke({ action: 'readTab', secret, gid: 1497736270, startRow: 3, limit: 2 });
   assert.equal(second.values[0][1], 'Lead 2');
   assert.equal(second.hasMore, false);
-  assert.equal(invoke({ action: 'readTab', secret, gid: 1497736270, startRow: 1, limit: 251 }).error, 'Invalid tab request.');
+  assert.equal(invoke({ action: 'readTab', secret, gid: 1497736270, startRow: 1, limit: 1001 }).error, 'Invalid tab request.');
 });

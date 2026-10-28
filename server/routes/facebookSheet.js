@@ -60,7 +60,7 @@ async function visibleTabRows(prisma, user, tab) {
 function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetch } = {}) {
   const router = express.Router();
   const tabCache = new Map();
-  const cacheDurationMs = 60_000;
+  const cacheDurationMs = 10 * 60_000;
   const maxCachedTabs = 5;
   async function getTab(gid, refresh = false) {
     if (refresh) tabCache.delete(gid);
@@ -80,11 +80,11 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
   }
   router.use(authMiddleware, checkRole(SALES));
 
-  router.get('/tabs', asyncHandler(async (_req, res) => {
+  router.get('/tabs', asyncHandler(async (req, res) => {
     const config = sheetConfig(env);
     const issues = configurationIssues(config);
     if (issues.length) return res.json({ configured: false, tabs: [], issues });
-    const tabs = await listFacebookTabs(config, fetchImpl);
+    const tabs = await listFacebookTabs(config, fetchImpl, req.query.refresh === '1');
     res.json({ configured: true, tabs });
   }));
 

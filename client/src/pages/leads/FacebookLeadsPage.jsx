@@ -19,11 +19,19 @@ const text = value => String(value ?? '')
 const connectionErrorMessage = error => error?.message === 'API endpoint not found.'
   ? 'The Facebook Leads API is not deployed on the CRM server yet. Redeploy the server from the latest main branch.'
   : error?.message || 'Could not reach the CRM server.'
+const tabStorageKey = userId => `facebook-sheet-tabs:${userId}`
+const savedTabs = userId => {
+  if (!userId) return null
+  try {
+    const saved = JSON.parse(localStorage.getItem(tabStorageKey(userId)) || 'null')
+    return saved?.configured && Array.isArray(saved.tabs) ? saved : null
+  } catch { return null }
+}
 
 export default function FacebookLeadsPage() {
   const { user } = useAuth()
   const isAdmin = ['super_admin', 'director'].includes(user?.role)
-  const [connection, setConnection] = useState(null)
+  const [connection, setConnection] = useState(() => savedTabs(user?.id))
   const [connectionError, setConnectionError] = useState('')
   const [selected, setSelected] = useState('crm')
   const [search, setSearch] = useState('')
@@ -39,12 +47,19 @@ export default function FacebookLeadsPage() {
 
   useEffect(() => {
     let active = true
+    setConnection(savedTabs(user?.id))
     setConnectionError('')
-    apiGet('/facebook-sheet/tabs')
-      .then(result => { if (active) setConnection(result) })
-      .catch(err => { if (active) { setConnection(null); setConnectionError(connectionErrorMessage(err)) } })
+    apiGet(`/facebook-sheet/tabs${refreshNextRequest.current ? '?refresh=1' : ''}`)
+      .then(result => {
+        if (!active) return
+        setConnection(result)
+        if (user?.id && result.configured && Array.isArray(result.tabs)) {
+          try { localStorage.setItem(tabStorageKey(user.id), JSON.stringify(result)) } catch { /* Storage is optional. */ }
+        }
+      })
+      .catch(err => { if (active) setConnectionError(connectionErrorMessage(err)) })
     return () => { active = false }
-  }, [reload])
+  }, [reload, user?.id])
 
   useEffect(() => {
     let active = true
@@ -119,6 +134,7 @@ export default function FacebookLeadsPage() {
         <label className="form-label" htmlFor="facebook-tab">Spreadsheet tab</label>
         <ThemeSelect id="facebook-tab" className="input-field" value={selected} onChange={event => chooseTab(event.target.value)}>
           <option value="crm">All CRM Facebook leads</option>
+          {!connection && <option value="loading" disabled>{connectionError ? 'Spreadsheet tabs unavailable' : 'Loading spreadsheet tabs…'}</option>}
           {connection?.tabs?.map(tab => <option key={tab.gid} value={tab.gid}>{tab.title}</option>)}
         </ThemeSelect>
       </div>

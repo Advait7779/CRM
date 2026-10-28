@@ -102,6 +102,37 @@ test('Apps Script tab chunks are fetched concurrently and kept in sheet order', 
   assert.deepEqual(tab.values.map(row => Number(row[0])), Array.from({ length: 751 }, (_, index) => index + 1));
 });
 
+test('updated Apps Script lists tabs once and reads 1000-row chunks', async () => {
+  const config = sheetConfig({
+    FACEBOOK_SHEET_WEBHOOK_URL: 'https://script.google.com/macros/s/test-updated-deployment/exec',
+    FACEBOOK_SHEET_READ_SECRET: 'test-updated-script-secret-at-least-32-characters'
+  });
+  let listCalls = 0;
+  const limits = [];
+  const scriptFetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    if (body.action === 'listTabs') {
+      listCalls += 1;
+      return { ok: true, json: async () => ({ success: true, tabs: [
+        { gid: 1497736270, title: 'Updated tab', index: 0, maxPageSize: 1000 }
+      ] }) };
+    }
+    limits.push(body.limit);
+    const count = Math.min(body.limit, 3002 - body.startRow);
+    const values = Array.from({ length: count }, (_, index) => [String(body.startRow + index)]);
+    return { ok: true, json: async () => ({ success: true, values,
+      nextRow: body.startRow + count, lastRow: 3001, hasMore: body.startRow + count <= 3001 }) };
+  };
+  const tab = await readFacebookTab(config, 1497736270, scriptFetch);
+  assert.equal(tab.values.length, 3001);
+  assert.deepEqual(limits, [1000, 1000, 1000, 1000]);
+  assert.equal(listCalls, 1);
+  await listFacebookTabs(config, scriptFetch);
+  assert.equal(listCalls, 1);
+  await listFacebookTabs(config, scriptFetch, true);
+  assert.equal(listCalls, 2);
+});
+
 test('mapping preserves source date and platform, normalizes phone and service', () => {
   const lead = rowToLead(headers, rows[1]);
   assert.equal(lead.facebookLeadId, 'l:102');
