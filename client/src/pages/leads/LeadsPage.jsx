@@ -53,7 +53,7 @@ const EMPTY_FORM = {
 
 
 
-function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, systemUsers = [], currentUser }) {
+export function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, systemUsers = [], currentUser, lockSource = false }) {
   const [form, setForm] = useState(lead ? { ...lead } : { ...EMPTY_FORM, exec: currentUser?.role === 'sales_executive' ? currentUser.name : '' })
 
   const handleSubmit = (e) => {
@@ -90,7 +90,7 @@ function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOptions, syst
             </div>
             <div className="form-group">
               <label className="form-label">Lead Source</label>
-              <ThemeSelect className="input-field" value={form.source} disabled={lead?.source === 'Justdial' && !isAdmin} onChange={e => setForm(f => ({ ...f, source: e.target.value }))}>
+              <ThemeSelect className="input-field" value={form.source} disabled={lockSource || (lead?.source === 'Justdial' && !isAdmin)} onChange={e => setForm(f => ({ ...f, source: e.target.value }))}>
                 {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
               </ThemeSelect>
             </div>

@@ -1,4 +1,4 @@
-export const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads', 'Facebook Leads']
+export const LEAD_GROUPS = ['All', 'GPS & Fuel Sensor', 'CCTV', 'Digital Services', 'Website Leads']
 
 const DIGITAL_PRODUCTS = new Set([
   'SMS', 'WhatsApp WABA', 'RCS', 'Voice Call',
@@ -6,9 +6,9 @@ const DIGITAL_PRODUCTS = new Set([
 ])
 
 export function leadMatchesGroup(lead, group) {
+  if (lead.source === 'Facebook') return false
   if (group === 'All') return true
   if (group === 'Website Leads') return Boolean(lead.websiteLeadId)
-  if (group === 'Facebook Leads') return lead.source === 'Facebook'
   if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor'
     if (group === 'CCTV') return lead.justdialProduct === 'CCTV'

@@ -686,7 +686,7 @@ router.get('/leads-export.xlsx', authMiddleware, checkRole(SALES), asyncHandler(
     return res.status(400).json({ message: 'Invalid lead export filter.' });
   }
   const records = await prisma.leads.findMany({
-    where: leadAccessWhere(req.user),
+    where: { ...leadAccessWhere(req.user), ...(group === 'Facebook Leads' ? {} : { source: { not: 'Facebook' } }) },
     orderBy: { createdAt: 'desc' },
     ...(await compatibilitySelect('leads'))
   });
@@ -978,7 +978,7 @@ router.post('/gps-renewals/import', authMiddleware, checkRole([...SALES, ...FINA
 }));
 
 router.get('/leads/summary', authMiddleware, checkRole(SALES), asyncHandler(async (req, res) => {
-  const access = leadAccessWhere(req.user);
+  const access = { ...leadAccessWhere(req.user), source: { not: 'Facebook' } };
   const [total, won, newCount] = await Promise.all([
     prisma.leads.count({ where: access }),
     prisma.leads.count({ where: { ...access, status: 'Won' } }),
@@ -1028,7 +1028,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
   router.get(`/${routeName}`, authMiddleware, checkRole(config.readRoles), asyncHandler(async (req, res) => {
     const where = {};
     if (routeName === 'tasks' && !MANAGEMENT.includes(req.user.role)) where.assignedUserId = req.user.id;
-    if (routeName === 'leads') Object.assign(where, leadAccessWhere(req.user));
+    if (routeName === 'leads') Object.assign(where, leadAccessWhere(req.user), { source: { not: 'Facebook' } });
     if (routeName === 'installations') {
       if (req.user.role === 'gps_installer') {
         where.type = 'GPS';

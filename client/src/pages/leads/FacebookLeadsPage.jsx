@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Download, RefreshCw, Search, TableProperties, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Download, RefreshCw, Search, TableProperties, ChevronLeft, ChevronRight, Pencil, UserCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ThemeSelect from '../../components/ThemeSelect'
-import { apiDownload, apiGet, apiPost } from '../../utils/api'
+import { apiDownload, apiGet, apiPost, apiPut } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import { localDateString } from '../../utils/date'
+import ModalBackdrop from '../../components/ModalBackdrop'
+import { LeadModal } from './LeadsPage'
 
 const ZONE = 'Asia/Kolkata'
 const dateFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -43,7 +44,16 @@ export default function FacebookLeadsPage() {
   const [syncing, setSyncing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState('')
+  const [editingLead, setEditingLead] = useState(null)
+  const [openingLeadId, setOpeningLeadId] = useState(null)
+  const [systemUsers, setSystemUsers] = useState([])
+  const [productOptions, setProductOptions] = useState([])
+  const [convertLead, setConvertLead] = useState(null)
+  const [converting, setConverting] = useState(false)
   const refreshNextRequest = useRef(false)
+  const editOptionsRequest = useRef(null)
+
+  useEffect(() => { editOptionsRequest.current = null; setEditingLead(null) }, [user?.id])
 
   useEffect(() => {
     let active = true
@@ -104,6 +114,44 @@ export default function FacebookLeadsPage() {
       await apiDownload(path, `facebook-leads-${selected}-${localDateString()}.xlsx`)
     } catch (err) { toast.error(err.message) }
     finally { setExporting(false) }
+  }
+
+  const openLead = async id => {
+    if (openingLeadId) return
+    setOpeningLeadId(id)
+    try {
+      if (!editOptionsRequest.current) editOptionsRequest.current = Promise.all([
+        apiGet('/system-users'),
+        isAdmin ? apiGet('/justdial/products') : Promise.resolve(null)
+      ])
+      const [lead, [users, products]] = await Promise.all([apiGet(`/leads/${id}`), editOptionsRequest.current])
+      setSystemUsers(Array.isArray(users) ? users : [])
+      setProductOptions(products?.assignable || [])
+      setEditingLead(lead)
+    } catch (err) {
+      editOptionsRequest.current = null
+      toast.error(`Could not open Facebook lead: ${err.message}`)
+    } finally { setOpeningLeadId(null) }
+  }
+
+  const saveLead = async (form, id) => {
+    try {
+      await apiPut(`/leads/${id}`, { ...form, source: 'Facebook' })
+      toast.success('Facebook lead updated')
+      setReload(value => value + 1)
+    } catch (err) { toast.error(err.message) }
+  }
+
+  const confirmConversion = async () => {
+    if (!convertLead || converting) return
+    setConverting(true)
+    try {
+      await apiPost(`/leads/${convertLead.id}/convert`, {})
+      toast.success(`${convertLead.name} converted to a customer`)
+      setConvertLead(null)
+      setReload(value => value + 1)
+    } catch (err) { toast.error(err.message) }
+    finally { setConverting(false) }
   }
 
   return <div className="animate-fade-in">
@@ -167,13 +215,16 @@ export default function FacebookLeadsPage() {
               <td>{lead.facebookPlatform === 'ig' ? 'Instagram' : 'Facebook'}</td>
               <td>{formatDate(lead.facebookSubmittedAt || lead.createdAt)}</td><td>{lead.status}</td><td>{lead.exec || '—'}</td>
               <td>{lead.facebookLeadId ? 'Google Sheet' : 'CRM entry'}</td>
-              <td><Link to={`/leads?search=${encodeURIComponent(lead.phone)}`}>Open in Leads</Link></td>
+              <td style={{ whiteSpace: 'nowrap' }}>
+                <button type="button" className="btn-secondary" onClick={() => openLead(lead.id)} disabled={openingLeadId === lead.id} title="Edit Facebook lead"><Pencil size={14} /> Edit</button>
+                {lead.status !== 'Converted' && !lead.convertedCustomerId && <button type="button" className="btn-secondary" onClick={() => setConvertLead(lead)} title="Convert to customer" style={{ marginLeft: 6 }}><UserCheck size={14} /> Convert</button>}
+              </td>
             </tr>)}</tbody>
           </> : <>
             <thead><tr><th>#</th><th>CRM</th>{(data?.headers || []).map((header, index) => <th key={index} title={text(header)} style={{ maxWidth: 240 }}>{header}</th>)}</tr></thead>
             <tbody>{(data?.rows || []).map(row => <tr key={row.rowNumber}>
               <td>{row.rowNumber}</td>
-              <td style={{ whiteSpace: 'nowrap' }}>{row.crm ? <Link to={`/leads?search=${encodeURIComponent(row.lead?.phone || '')}`}>{row.crm.status || 'In CRM'}</Link> : 'Sheet only'}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{row.crm ? <button type="button" className="btn-secondary" onClick={() => openLead(row.crm.id)} disabled={openingLeadId === row.crm.id} title="Edit CRM lead">{row.crm.status || 'In CRM'}</button> : 'Sheet only'}</td>
               {(data?.headers || []).map((_, index) => <td key={index} title={text(row.values[index])} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text(row.values[index]) || '—'}</td>)}
             </tr>)}</tbody>
           </>}
@@ -190,5 +241,16 @@ export default function FacebookLeadsPage() {
         <button type="button" className="btn-secondary" aria-label="Next page" onClick={() => setPage(value => value + 1)} disabled={page >= pages}><ChevronRight size={16} /></button>
       </div>
     </div>
+    {editingLead && <LeadModal lead={editingLead} isNew={false} isAdmin={isAdmin} lockSource currentUser={user} systemUsers={systemUsers} productOptions={productOptions} onClose={() => setEditingLead(null)} onSave={saveLead} />}
+    {convertLead && <ModalBackdrop className="modal-backdrop" onClick={() => !converting && setConvertLead(null)}>
+      <div className="modal-box" onClick={event => event.stopPropagation()} style={{ maxWidth: 440 }}>
+        <h2 style={{ marginBottom: 12 }}>Convert to Active Customer</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 20 }}>Convert <strong>{convertLead.name}</strong> into an active customer account?</p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" className="btn-secondary" disabled={converting} onClick={() => setConvertLead(null)}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={converting} onClick={confirmConversion}>{converting ? 'Converting…' : 'Yes, Convert to Customer'}</button>
+        </div>
+      </div>
+    </ModalBackdrop>}
   </div>
 }

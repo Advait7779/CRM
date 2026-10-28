@@ -51,6 +51,7 @@ const prisma = {
       return matched.slice(skip, take === undefined ? undefined : skip + take);
     },
     async findUnique({ where }) { return leads.find(lead => lead.id === where.id) || null; },
+    async count({ where }) { return leads.filter(lead => matchesWhere(lead, where)).length; },
     async update({ where, data }) {
       const lead = leads.find(item => item.id === where.id);
       Object.assign(lead, data);
@@ -92,7 +93,7 @@ test('Leads API scopes products across sources regardless of executive while Set
     return { status: response.status, data: await response.json() };
   };
 
-  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14, 15, 16, 17, 18]], [2, [11, 15, 16, 17]], [3, [12, 18]], [4, [11, 15, 16, 17]], [5, [11, 15, 16, 17]]]) {
+  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14, 15, 16, 17]], [2, [11, 15, 16, 17]], [3, [12]], [4, [11, 15, 16, 17]], [5, [11, 15, 16, 17]]]) {
     const result = await request(userId, '/leads');
     assert.equal(result.status, 200);
     assert.deepEqual(result.data.map(lead => lead.id), expectedIds);
@@ -101,6 +102,11 @@ test('Leads API scopes products across sources regardless of executive while Set
   assert.equal(page.status, 200);
   assert.equal(page.data.total, 4);
   assert.deepEqual(page.data.rows.map(lead => lead.id), [16, 17]);
+  const all = await request(1, '/leads?withTotal=1&page=1&pageSize=10');
+  assert.equal(all.data.total, 7);
+  assert.equal(all.data.rows.some(lead => lead.source === 'Facebook'), false);
+  assert.equal((await request(1, '/leads/summary')).data.total, 7);
+  assert.deepEqual((await request(3, '/leads?withTotal=1&search=9000000018')).data.rows, []);
   assert.equal((await request(2, '/leads/12')).status, 404);
   assert.equal((await request(2, '/leads/12', 'PUT', { status: 'Contacted' })).status, 404);
   assert.equal((await request(2, '/leads/11')).status, 200);
@@ -126,6 +132,13 @@ test('Leads API scopes products across sources regardless of executive while Set
   assert.equal(exported.getWorksheet('Leads').getCell('B8').value, 'Other CCTV enquiry');
   assert.equal(exported.getWorksheet('Leads').getCell('B9').value, 'Assigned referral');
   assert.equal(exported.getWorksheet('Leads').getCell('B10').value, null);
+  const adminHeaders = { Authorization: `Bearer ${jwt.sign({ id: 1, tokenVersion: 0 }, process.env.JWT_SECRET)}` };
+  const regularExport = await fetch(`${base}/leads-export.xlsx?group=All`, { headers: adminHeaders });
+  const regularWorkbook = await new ExcelJS.Workbook().xlsx.load(Buffer.from(await regularExport.arrayBuffer()));
+  assert.equal(regularWorkbook.getWorksheet('Leads').getCell('B13').value, null, 'regular export excludes the Facebook lead');
+  const facebookExport = await fetch(`${base}/leads-export.xlsx?group=Facebook%20Leads`, { headers: adminHeaders });
+  const facebookWorkbook = await new ExcelJS.Workbook().xlsx.load(Buffer.from(await facebookExport.arrayBuffer()));
+  assert.equal(facebookWorkbook.getWorksheet('Leads').getCell('B6').value, 'Wrong product assigned');
   assert.equal((await request(2, '/leads-export.xlsx?group=invalid')).status, 400);
 
   assert.equal((await request(2, '/leads/11', 'PUT', { notes: 'Changed by sales' })).status, 403);

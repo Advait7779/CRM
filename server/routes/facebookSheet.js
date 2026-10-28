@@ -143,7 +143,7 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     };
     const [rows, total] = await Promise.all([
       prisma.leads.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: pageSize,
-        select: { id: true, name: true, phone: true, service: true, status: true, exec: true, source: true,
+        select: { id: true, name: true, phone: true, service: true, status: true, exec: true, source: true, convertedCustomerId: true,
           justdialProduct: true, facebookLeadId: true, facebookPlatform: true, facebookSubmittedAt: true, createdAt: true } }),
       prisma.leads.count({ where })
     ]);
