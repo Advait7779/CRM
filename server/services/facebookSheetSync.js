@@ -30,6 +30,8 @@ function sheetConfig(env = process.env) {
   return {
     spreadsheetId: String(env.FACEBOOK_SHEET_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID).trim(),
     sheetId: Number(env.FACEBOOK_SHEET_GID || DEFAULT_SHEET_ID),
+    webhookUrl: String(env.FACEBOOK_SHEET_WEBHOOK_URL || '').trim(),
+    readSecret: String(env.FACEBOOK_SHEET_READ_SECRET || '').trim(),
     clientEmail: String(env.FACEBOOK_SHEET_CLIENT_EMAIL || '').trim(),
     privateKey: String(env.FACEBOOK_SHEET_PRIVATE_KEY || '').replace(/\\n/g, '\n').trim(),
     intervalMinutes: Math.max(1, Number.parseInt(env.FACEBOOK_SHEET_SYNC_INTERVAL_MINUTES || '5', 10) || 5)
@@ -40,9 +42,21 @@ function configurationIssues(config) {
   const issues = [];
   if (!/^[A-Za-z0-9_-]+$/.test(config.spreadsheetId)) issues.push('FACEBOOK_SHEET_SPREADSHEET_ID is invalid');
   if (!Number.isSafeInteger(config.sheetId) || config.sheetId < 0) issues.push('FACEBOOK_SHEET_GID is invalid');
-  if (!/^[^\s@]+@[^\s@]+\.gserviceaccount\.com$/.test(config.clientEmail)) issues.push('FACEBOOK_SHEET_CLIENT_EMAIL is missing or invalid');
-  try { crypto.createPrivateKey(config.privateKey); }
-  catch { issues.push('FACEBOOK_SHEET_PRIVATE_KEY is missing or invalid'); }
+  if (config.webhookUrl || config.readSecret) {
+    let url;
+    try { url = new URL(config.webhookUrl); } catch { /* Report a safe reason below. */ }
+    if (!url || url.protocol !== 'https:' || url.hostname !== 'script.google.com'
+      || !/^\/macros\/s\/[^/]+\/exec$/.test(url.pathname)) {
+      issues.push('FACEBOOK_SHEET_WEBHOOK_URL must be an HTTPS Apps Script /exec URL');
+    }
+    if (config.readSecret.length < 32) issues.push('FACEBOOK_SHEET_READ_SECRET must have at least 32 characters');
+  } else if (config.clientEmail || config.privateKey) {
+    if (!/^[^\s@]+@[^\s@]+\.gserviceaccount\.com$/.test(config.clientEmail)) issues.push('FACEBOOK_SHEET_CLIENT_EMAIL is missing or invalid');
+    try { crypto.createPrivateKey(config.privateKey); }
+    catch { issues.push('FACEBOOK_SHEET_PRIVATE_KEY is missing or invalid'); }
+  } else {
+    issues.push('Set FACEBOOK_SHEET_WEBHOOK_URL and FACEBOOK_SHEET_READ_SECRET on the CRM server');
+  }
   return issues;
 }
 
@@ -75,7 +89,32 @@ async function accessToken(config, fetchImpl = fetch) {
   return cachedToken.value;
 }
 
+async function bridgeRequest(config, action, details = {}, fetchImpl = fetch) {
+  const response = await fetchImpl(config.webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, secret: config.readSecret, ...details }),
+    redirect: 'follow',
+    signal: AbortSignal.timeout(30000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.success !== true) {
+    throw new Error(`Facebook sheet Apps Script ${action} failed: ${data.error || `HTTP ${response.status}`}.`);
+  }
+  return data;
+}
+
 async function listFacebookTabs(config, fetchImpl = fetch) {
+  if (config.webhookUrl) {
+    const data = await bridgeRequest(config, 'listTabs', {}, fetchImpl);
+    if (!Array.isArray(data.tabs) || data.tabs.length > 200 || data.tabs.some(tab =>
+      !Number.isSafeInteger(tab.gid) || tab.gid < 0 || typeof tab.title !== 'string'
+      || !tab.title || !Number.isSafeInteger(tab.index))) {
+      throw new Error('Facebook sheet Apps Script returned invalid tab metadata.');
+    }
+    return data.tabs.map(tab => ({ gid: tab.gid, title: tab.title, index: tab.index,
+      rowCount: tab.rowCount ?? 0, columnCount: tab.columnCount ?? 0 })).sort((a, b) => a.index - b.index);
+  }
   const token = await accessToken(config, fetchImpl);
   const headers = { Authorization: `Bearer ${token}` };
   const base = `${SHEETS_URL}/${encodeURIComponent(config.spreadsheetId)}`;
@@ -100,6 +139,24 @@ async function readFacebookTab(config, gid, fetchImpl = fetch) {
   const tabs = await listFacebookTabs(config, fetchImpl);
   const tab = tabs.find(item => item.gid === gid);
   if (!tab) { const error = new Error('Spreadsheet tab not found.'); error.status = 404; throw error; }
+  if (config.webhookUrl) {
+    const values = [];
+    let startRow = 1;
+    for (let page = 0; page < 1000; page += 1) {
+      const data = await bridgeRequest(config, 'readTab', { gid, startRow, limit: 250 }, fetchImpl);
+      if (!Array.isArray(data.values) || data.values.length > 250 || data.values.some(row =>
+        !Array.isArray(row) || row.length > 52 || row.some(value => typeof value !== 'string'))
+        || typeof data.hasMore !== 'boolean'
+        || !Number.isSafeInteger(data.nextRow) || data.nextRow !== startRow + data.values.length
+        || (data.hasMore && !data.values.length)) {
+        throw new Error('Facebook sheet Apps Script returned invalid tab rows.');
+      }
+      values.push(...data.values);
+      if (!data.hasMore) return { ...tab, values };
+      startRow = data.nextRow;
+    }
+    throw new Error('Facebook sheet Apps Script exceeded the page limit.');
+  }
   const token = await accessToken(config, fetchImpl);
   const base = `${SHEETS_URL}/${encodeURIComponent(config.spreadsheetId)}`;
   const lastColumn = columnLetter(Math.min(Math.max(tab.columnCount, 1), 52) - 1);

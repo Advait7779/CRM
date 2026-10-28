@@ -107,7 +107,7 @@ export default function FacebookLeadsPage() {
       <strong>CRM server connection failed.</strong> {connectionError}
     </div>}
     {connection && !connection.configured && <div style={{ padding: 16, marginBottom: 18, borderRadius: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: 'var(--text-primary)' }}>
-      <strong>Spreadsheet connection needs setup.</strong> The CRM server needs its read-only Google service account credentials and Viewer access to the workbook. Existing CRM Facebook leads remain available below.
+      <strong>Spreadsheet connection needs setup.</strong> Configure the CRM server with the Facebook Apps Script URL and read secret, or a Google service account with Viewer access. Existing CRM Facebook leads remain available below.
       {connection.issues?.length > 0 && <div style={{ fontSize: 12, marginTop: 7 }}>{connection.issues.join(' · ')}</div>}
     </div>}
 

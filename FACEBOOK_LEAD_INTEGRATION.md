@@ -4,19 +4,29 @@ The CRM reads spreadsheet `1S-ZvDpj2LSc6-z4Cs35PDzDDmsj-Ht_txQCOCOMeubs`. The ma
 
 The linked **Allinone Leads - Oct'26** tab (gid `1497736270`) remains on the automatic five-minute sync. Other tabs are synced on demand. Both `fb` and `ig` platform rows become source `Facebook`; the original platform is retained. The integration never writes to the Google Sheet.
 
-## Deployment setup
+## Deployment setup: Apps Script (recommended)
 
-1. In a Google Cloud project, enable the Google Sheets API and create a service account with a JSON private key.
-2. Share the spreadsheet with the service account email as **Viewer**. The account needs access to the spreadsheet even though the developer's Google Drive connection can read it.
-3. Set these secrets in the **CRM server** environment (for example, Coolify), never in the browser build or source control:
+This connection does not need a Google Cloud service account or a JSON key. It uses a separate Apps Script web app that reads this workbook with the deploying Google user's access. Do **not** publish the spreadsheet itself or replace the existing website enquiry script.
 
-   - `FACEBOOK_SHEET_CLIENT_EMAIL`: service account `client_email`.
-   - `FACEBOOK_SHEET_PRIVATE_KEY`: service account `private_key`. Both real PEM line breaks and escaped `\n` line breaks work.
+1. Using a Google account that can open the workbook, visit `https://script.google.com`, click **New project**, and name it **CRM Facebook Leads Reader**. This is a separate script project so existing website enquiry automations stay untouched.
+2. Replace the starter `Code.gs` contents with the complete source in [`server/googleAppsScriptFacebookLeads.gs`](server/googleAppsScriptFacebookLeads.gs). Save.
+3. Generate a unique random secret of at least 32 characters. In Apps Script **Project Settings → Script Properties**, add `FACEBOOK_SHEET_READ_SECRET` with that secret. Keep it out of source code, chat, and GitHub.
+4. In Apps Script, click **Deploy → New deployment → Web app**. Set **Execute as: Me** and **Who has access: Anyone**. Deploy, complete the Google authorization for spreadsheet read access, and copy the `/exec` web app URL. If your Workspace administrator does not allow **Anyone** web apps, this option needs administrator approval or a different authentication method.
+5. Set these two values in the **CRM server** environment (for example, Coolify):
 
-   The spreadsheet ID and gid default to the linked source. `FACEBOOK_SHEET_SYNC_INTERVAL_MINUTES=5` can change the polling interval. See `server/.env.example` for all settings.
+   - `FACEBOOK_SHEET_WEBHOOK_URL`: the `/exec` URL from step 4.
+   - `FACEBOOK_SHEET_READ_SECRET`: exactly the same secret from step 3.
 
-4. Deploy the CRM and apply migrations `20261027_facebook_lead_sync` and `20261027_facebook_lead_tabs` through the normal server start or `npm run migrate --prefix server`. Restart the server. A first read of the automatic tab starts about 15 seconds later; check the server logs for the import count.
-5. Open **Facebook Leads** in the sidebar. Confirm that the tab picker lists the workbook's tabs. Select a tab to inspect it; use **Sync tab into CRM** only for a mapped Meta lead tab. The initial October source tab contained 41 leads when inspected on 27 October 2026 (29 `fb`, 12 `ig`), so its first import should be close to 41 unless rows were added, deleted, or invalid.
+   `docker-compose.coolify.yml` passes both into the CRM container. Leave `FACEBOOK_SHEET_CLIENT_EMAIL` and `FACEBOOK_SHEET_PRIVATE_KEY` unset. The script settings take precedence if both methods are configured. The spreadsheet ID and automatic October gid default to the linked source. `FACEBOOK_SHEET_SYNC_INTERVAL_MINUTES=5` changes the polling interval.
+
+6. Deploy the CRM and apply migrations `20261027_facebook_lead_sync` and `20261027_facebook_lead_tabs` through the normal server start or `npm run migrate --prefix server`. Restart the server. A first read of the automatic tab starts about 15 seconds later; check server logs for the import count.
+7. Open **Facebook Leads** in the sidebar. Confirm the tab picker lists the workbook's tabs. Select a tab to inspect it; use **Sync tab into CRM** only for a mapped Meta lead tab. The initial October source tab contained 41 leads when inspected on 27 October 2026 (29 `fb`, 12 `ig`), so its first import should be close to 41 unless rows were added, deleted, or invalid.
+
+The Apps Script endpoint accepts only secret-authenticated POST requests for listing tabs and reading at most 250 rows per request. It never writes to the spreadsheet. CRM staff still need their CRM login, and raw unmapped tab access remains restricted to administrators. The endpoint URL alone cannot read rows without the secret.
+
+## Alternative: service account
+
+If your organization permits JSON keys, enable the Sheets API in a Google Cloud project, create a service account, share the workbook with its email as **Viewer**, and set `FACEBOOK_SHEET_CLIENT_EMAIL` and `FACEBOOK_SHEET_PRIVATE_KEY` in the CRM server environment. Both real PEM line breaks and escaped `\n` line breaks work. Do not set the Apps Script URL or secret if using this method. The Apps Script method avoids changing an organization-wide key creation policy.
 
 If the browser reports `404 API endpoint not found` for `/api/facebook-sheet/tabs`, the frontend is calling an API deployment that does not have the new routes. Redeploy the API server from the same commit as the frontend, including both Facebook migrations. This 404 occurs before any Google Sheets credential check. Once the route responds, a missing credential or workbook Viewer grant will produce a separate configuration or Google access error. In a Coolify Compose deployment, the `FACEBOOK_SHEET_*` variables must be passed through `docker-compose.coolify.yml`; put their values in Coolify environment settings and redeploy both services.
 

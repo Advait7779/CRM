@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { sheetConfig, configurationIssues, analyzeFacebookTab, rowToLead, processFacebookSheetLeads } = require('../services/facebookSheetSync');
+const { sheetConfig, configurationIssues, listFacebookTabs, readFacebookTab, analyzeFacebookTab, rowToLead, processFacebookSheetLeads } = require('../services/facebookSheetSync');
 
 const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const env = {
@@ -36,8 +36,43 @@ function fakeFetch(url, options) {
 
 test('configuration requires server-only service account credentials', () => {
   assert.deepEqual(configurationIssues(sheetConfig(env)), []);
-  assert.match(configurationIssues(sheetConfig({})).join(' '), /CLIENT_EMAIL/);
-  assert.match(configurationIssues(sheetConfig({})).join(' '), /PRIVATE_KEY/);
+  assert.match(configurationIssues(sheetConfig({})).join(' '), /WEBHOOK_URL/);
+  assert.match(configurationIssues(sheetConfig({ FACEBOOK_SHEET_CLIENT_EMAIL: env.FACEBOOK_SHEET_CLIENT_EMAIL })).join(' '), /PRIVATE_KEY/);
+});
+
+test('Apps Script connection lists tabs and reads paged rows without a service account key', async () => {
+  const scriptEnv = {
+    FACEBOOK_SHEET_WEBHOOK_URL: 'https://script.google.com/macros/s/test-deployment/exec',
+    FACEBOOK_SHEET_READ_SECRET: 'test-facebook-script-secret-at-least-32-characters'
+  };
+  const config = sheetConfig(scriptEnv);
+  assert.deepEqual(configurationIssues(config), []);
+  assert.match(configurationIssues(sheetConfig({ FACEBOOK_SHEET_WEBHOOK_URL: scriptEnv.FACEBOOK_SHEET_WEBHOOK_URL })).join(' '), /READ_SECRET/);
+  const calls = [];
+  const scriptFetch = async (url, options) => {
+    assert.equal(url, scriptEnv.FACEBOOK_SHEET_WEBHOOK_URL);
+    assert.equal(options.method, 'POST');
+    const body = JSON.parse(options.body);
+    assert.equal(body.secret, scriptEnv.FACEBOOK_SHEET_READ_SECRET);
+    calls.push(body);
+    if (body.action === 'listTabs') return { ok: true, json: async () => ({ success: true, tabs: [
+      { gid: 1497736270, title: "Allinone Leads - Oct'26", index: 0, rowCount: 3, columnCount: 19 }
+    ] }) };
+    assert.equal(body.action, 'readTab');
+    if (body.startRow === 1) return { ok: true, json: async () => ({ success: true, values: rows.slice(0, 2), nextRow: 3, hasMore: true }) };
+    assert.equal(body.startRow, 3);
+    return { ok: true, json: async () => ({ success: true, values: rows.slice(2), nextRow: 4, hasMore: false }) };
+  };
+  assert.equal((await listFacebookTabs(config, scriptFetch)).length, 1);
+  const tab = await readFacebookTab(config, 1497736270, scriptFetch);
+  assert.deepEqual(tab.values, rows);
+  assert.equal(calls.filter(call => call.action === 'readTab').length, 2);
+  await assert.rejects(readFacebookTab(config, 1497736270, async (_url, options) => {
+    const body = JSON.parse(options.body);
+    return body.action === 'listTabs'
+      ? { ok: true, json: async () => ({ success: true, tabs: [{ gid: 1497736270, title: 'October', index: 0 }] }) }
+      : { ok: true, json: async () => ({ success: true, values: [], nextRow: 1, hasMore: true }) };
+  }), /invalid tab rows/);
 });
 
 test('mapping preserves source date and platform, normalizes phone and service', () => {
