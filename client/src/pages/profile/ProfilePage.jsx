@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Lock, Save, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, Lock, Save, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
 import { apiGet, apiPut } from '../../utils/api'
@@ -10,6 +10,9 @@ export default function ProfilePage() {
   const [password, setPassword] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [activity, setActivity] = useState([])
   const [saving, setSaving] = useState(false)
+  const [showCurrent, setShowCurrent] = useState(false)
+  const [showNew, setShowNew] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   useEffect(() => {
     apiGet('/auth/profile')
@@ -40,8 +43,26 @@ export default function ProfilePage() {
       const result = await apiPut('/auth/password', { currentPassword: password.currentPassword, newPassword: password.newPassword })
       updateUser({ token: result.token })
       setPassword({ currentPassword: '', newPassword: '', confirmPassword: '' })
+      setShowCurrent(false)
+      setShowNew(false)
+      setShowConfirm(false)
       toast.success('Password updated')
     } catch (error) { toast.error(error.message) }
+  }
+
+  const eyeButtonStyle = {
+    position: 'absolute',
+    right: 10,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4
   }
 
   return (
@@ -73,9 +94,75 @@ export default function ProfilePage() {
           <form className="glass-card" onSubmit={changePassword} style={{ padding: 24 }}>
             <h3 style={{ marginBottom: 16 }}>Change Password</h3>
             <div className="form-grid-3">
-              <div className="form-group"><label className="form-label">Current Password</label><input className="input-field" type="password" value={password.currentPassword} onChange={e => setPassword(current => ({ ...current, currentPassword: e.target.value }))} required /></div>
-              <div className="form-group"><label className="form-label">New Password</label><input className="input-field" type="password" minLength={6} value={password.newPassword} onChange={e => setPassword(current => ({ ...current, newPassword: e.target.value }))} required /></div>
-              <div className="form-group"><label className="form-label">Confirm Password</label><input className="input-field" type="password" value={password.confirmPassword} onChange={e => setPassword(current => ({ ...current, confirmPassword: e.target.value }))} required /></div>
+              <div className="form-group">
+                <label className="form-label">Current Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="input-field"
+                    type={showCurrent ? 'text' : 'password'}
+                    style={{ paddingRight: 38 }}
+                    value={password.currentPassword}
+                    onChange={e => setPassword(current => ({ ...current, currentPassword: e.target.value }))}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrent(v => !v)}
+                    aria-label={showCurrent ? 'Hide current password' : 'Show current password'}
+                    title={showCurrent ? 'Hide password' : 'Show password'}
+                    style={eyeButtonStyle}
+                  >
+                    {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">New Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="input-field"
+                    type={showNew ? 'text' : 'password'}
+                    style={{ paddingRight: 38 }}
+                    minLength={6}
+                    value={password.newPassword}
+                    onChange={e => setPassword(current => ({ ...current, newPassword: e.target.value }))}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNew(v => !v)}
+                    aria-label={showNew ? 'Hide new password' : 'Show new password'}
+                    title={showNew ? 'Hide password' : 'Show password'}
+                    style={eyeButtonStyle}
+                  >
+                    {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Confirm Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="input-field"
+                    type={showConfirm ? 'text' : 'password'}
+                    style={{ paddingRight: 38 }}
+                    value={password.confirmPassword}
+                    onChange={e => setPassword(current => ({ ...current, confirmPassword: e.target.value }))}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(v => !v)}
+                    aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
+                    title={showConfirm ? 'Hide password' : 'Show password'}
+                    style={eyeButtonStyle}
+                  >
+                    {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
             </div>
             <button className="btn-primary" style={{ marginTop: 18 }}><Lock size={15} /> Update Password</button>
           </form>
