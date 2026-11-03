@@ -2,7 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
-  webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications
+  webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications,
+  sendWebsiteLeadWebhookNotifications
 } = require('../services/savedWebhookNotifications');
 
 test('saved notification URLs replace number or phone and otherwise append phone', () => {
@@ -119,4 +120,56 @@ test('Justdial respects DNC flags and does not send messages to landlines', asyn
   assert.equal(requested.length, 0);
   await sendJustdialWebhookNotifications(prisma, { justdialProduct: 'Unclassified' }, { mobile: '9876543210' }, fetchImpl);
   assert.equal(requested.length, 0);
+});
+
+test('Website leads trigger configured digital services webhooks with phone and name', async () => {
+  const requested = [];
+  const prisma = {
+    appSettings: {
+      async findMany({ where }) {
+        assert.ok(where.key.in.includes('justdial_digital_sms_webhook_url'));
+        return [
+          { key: 'justdial_digital_sms_webhook_url', value: 'https://provider.example/sms?number=000&sms=Dear+%5Balp%5D%2C+welcome' },
+          { key: 'justdial_digital_rcs_webhook_url', value: 'https://provider.example/rcs?number=000&title=Web+Dev' },
+          { key: 'justdial_digital_whatsapp_webhook_url', value: 'https://provider.example/waba?number=000&sms=Hi+{name}' }
+        ];
+      }
+    }
+  };
+  const fetchImpl = async url => {
+    requested.push(url);
+    return { ok: true, status: 200 };
+  };
+  const websiteLead = {
+    id: 101,
+    name: 'Vishnu Shankar',
+    phone: '9082390285',
+    service: 'Bulk SMS for Election',
+    justdialProduct: 'SMS'
+  };
+  const result = await sendWebsiteLeadWebhookNotifications(prisma, websiteLead, fetchImpl);
+  assert.equal(result.length, 3);
+  assert.equal(requested.length, 3);
+  const smsUrl = new URL(requested[0]);
+  assert.equal(smsUrl.searchParams.get('number'), '9082390285');
+  assert.equal(smsUrl.searchParams.get('sms'), 'Dear Vishnu Shankar, welcome');
+  const rcsUrl = new URL(requested[1]);
+  assert.equal(rcsUrl.searchParams.get('number'), '9082390285');
+  const wabaUrl = new URL(requested[2]);
+  assert.equal(wabaUrl.searchParams.get('number'), '9082390285');
+  assert.equal(wabaUrl.searchParams.get('sms'), 'Hi Vishnu Shankar');
+});
+
+test('Website leads with invalid phone or missing settings are safely skipped', async () => {
+  const prisma = {
+    appSettings: {
+      async findMany() { return []; }
+    }
+  };
+  const noPhone = await sendWebsiteLeadWebhookNotifications(prisma, { name: 'Test', phone: '' });
+  assert.equal(noPhone.length, 0);
+  const noSettings = await sendWebsiteLeadWebhookNotifications(prisma, { name: 'Test', phone: '9876543210' });
+  assert.equal(noSettings.length, 0);
+  const safeWithoutAppSettings = await sendWebsiteLeadWebhookNotifications({}, { name: 'Test', phone: '9876543210' });
+  assert.equal(safeWithoutAppSettings.length, 0);
 });

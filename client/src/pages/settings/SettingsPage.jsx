@@ -8,7 +8,7 @@ const CUSTOMER_SETTING_KEYS = ['sms_webhook_url', 'whatsapp_webhook_url', 'rcs_w
 const JUSTDIAL_GROUPS = [
   { id: 'cctv', title: 'CCTV', description: 'CCTV installation and repair enquiries' },
   { id: 'gps_fuel', title: 'GPS & Fuel Sensor', description: 'GPS tracking and fuel sensor enquiries' },
-  { id: 'digital', title: 'Digital Services', description: 'SMS, WABA, RCS, voice, website, software, and digital marketing enquiries' }
+  { id: 'digital', title: 'Digital Services', description: 'SMS, WABA, RCS, voice, website, software, and digital marketing enquiries (runs for Justdial enquiries & Website CMS leads)' }
 ]
 const JUSTDIAL_CHANNELS = [
   { id: 'sms', label: 'SMS' },
@@ -289,8 +289,8 @@ export default function SettingsPage() {
         </section>
 
         <div style={{ marginTop: 36, marginBottom: 18 }}>
-          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>Justdial Enquiry Notifications</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0 }}>Use approved, product-specific provider URLs. Only newly received Justdial leads in a recognised group use these URLs. Leave a field empty to disable that channel.</p>
+          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>Enquiry Notifications (Justdial & Website Leads)</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0 }}>Use approved, product-specific provider URLs. Newly received Justdial leads and incoming Website CMS leads use these URLs. Leave a field empty to disable that channel.</p>
         </div>
         {JUSTDIAL_GROUPS.map(group => (
           <section key={group.id} className="glass-card" style={{ padding: 28, marginBottom: 24 }}>
@@ -313,7 +313,7 @@ export default function SettingsPage() {
                 )
               })}
             </div>
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-secondary)' }}>Use {'{phone}'} in the recipient parameter, or the existing phone/number parameter will be replaced. In SMS text, [alp] or {'{name}'} becomes the Justdial lead name. Justdial DNC marked numbers are skipped.</p>
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-secondary)' }}>Use {'{phone}'} in the recipient parameter, or the existing phone/number parameter will be replaced. In SMS text, [alp] or {'{name}'} becomes the contact name. Justdial DNC marked numbers are skipped.</p>
           </section>
         ))}
 

@@ -79,7 +79,7 @@ function rowToLead(row) {
   };
 }
 
-async function processWebsiteSheetLeads(prisma, { env = process.env, fetchImpl = fetch } = {}) {
+async function processWebsiteSheetLeads(prisma, { env = process.env, fetchImpl = fetch, sendCustomerNotifications } = {}) {
   const config = sheetConfig(env);
   if (!isConfigured(config)) return { enabled: false, imported: 0 };
   const rows = await readWebsiteRows(config, fetchImpl);
@@ -98,7 +98,7 @@ async function processWebsiteSheetLeads(prisma, { env = process.env, fetchImpl =
     const id = String(row[0]).trim();
     if (known.has(id)) continue;
     try {
-      const result = await importWebsiteLead(prisma, rowToLead(row));
+      const result = await importWebsiteLead(prisma, rowToLead(row), { fetchImpl, sendCustomerNotifications });
       if (result.imported) imported += 1;
       known.add(id);
     } catch (error) {

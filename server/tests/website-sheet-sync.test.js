@@ -127,3 +127,36 @@ test('sheet webhook pages through more than 250 new leads', async () => {
   assert.equal(result.length, 251);
   assert.equal(calls, 2);
 });
+
+test('website lead import dispatches customer notifications for new leads only', async () => {
+  const notifications = [];
+  const saved = new Map();
+  const prisma = {
+    leads: {
+      async findMany() { return []; },
+      async create({ data }) {
+        const record = { id: 1, ...data };
+        saved.set(data.websiteLeadId, record);
+        return record;
+      }
+    },
+    users: { async findMany() { return []; } }
+  };
+  const rows = [
+    headers,
+    [50, 'Ramraje Gadhve', '8282982829', 'ram@example.com', 'Rich Communication Service (RCS)', 'Demo Request Form', 'New', '', '2026-11-03T10:00:00.000Z']
+  ];
+  const options = {
+    env,
+    fetchImpl: fakeFetch(rows),
+    sendCustomerNotifications: async (_prisma, lead) => {
+      notifications.push(lead);
+    }
+  };
+  const result = await processWebsiteSheetLeads(prisma, options);
+  assert.equal(result.imported, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].name, 'Ramraje Gadhve');
+  assert.equal(notifications[0].phone, '8282982829');
+});

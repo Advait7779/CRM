@@ -1,5 +1,6 @@
 const { prepareData } = require('../utils/prismaData');
 const { classifyJustdialCategory, canAccessLead } = require('./justdialProducts');
+const { sendWebsiteLeadWebhookNotifications } = require('./savedWebhookNotifications');
 
 function normalizeWebsiteLead(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid website lead.');
@@ -44,19 +45,26 @@ function toLeadData(payload) {
   }, { create: true });
 }
 
-async function importWebsiteLead(prisma, input) {
+async function importWebsiteLead(prisma, input, { sendCustomerNotifications = sendWebsiteLeadWebhookNotifications, fetchImpl = fetch } = {}) {
   const payload = normalizeWebsiteLead(input);
   let lead;
   try {
     lead = await prisma.leads.create({
       data: toLeadData(payload),
-      select: { id: true, name: true, service: true, justdialProduct: true, exec: true }
+      select: { id: true, name: true, phone: true, service: true, justdialProduct: true, exec: true }
     });
   } catch (error) {
     if (error.code !== 'P2002') throw error;
     const existing = await prisma.leads.findUnique({ where: { websiteLeadId: payload.leadId }, select: { id: true } });
     if (!existing) throw error;
     return { imported: false, duplicate: true };
+  }
+
+  if (typeof sendCustomerNotifications === 'function') {
+    setImmediate(() => {
+      sendCustomerNotifications(prisma, lead, fetchImpl)
+        .catch(error => console.error(`Website lead ${lead.id} customer notification failed:`, error.message));
+    });
   }
 
   try {
