@@ -759,13 +759,13 @@ router.get('/gps-renewals', authMiddleware, checkRole([...SALES, ...FINANCE]), a
   };
   const paging = pagination(req.query);
   if (search.trim()) {
-    const candidates = await prisma.renewals.findMany({ where, orderBy: [{ nextDue: 'asc' }, { id: 'asc' }], include: { Customers: { select: { phone: true } } } });
+    const candidates = await prisma.renewals.findMany({ where, orderBy: [{ nextDue: 'desc' }, { id: 'desc' }], include: { Customers: { select: { phone: true } } } });
     const matched = candidates.filter((row) => matchesGpsRenewal(row, search, statusFilter));
     return sendPaginatedList(req, res, matched.slice(paging.skip, paging.skip + paging.take).map(gpsRecordResponse), async () => matched.length);
   }
   const rows = await prisma.renewals.findMany({
     where,
-    orderBy: [{ nextDue: 'asc' }, { id: 'asc' }],
+    orderBy: [{ nextDue: 'desc' }, { id: 'desc' }],
     include: { Customers: { select: { phone: true } } },
     ...paging
   });
