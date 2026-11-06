@@ -10,7 +10,7 @@ const { prisma, Prisma } = require('../config/prisma');
 const { currentDateOnly, jsonReplacer, prepareData, prismaId, toDateOnly } = require('../utils/prismaData');
 const { authMiddleware, checkRole } = require('../middleware/auth');
 const { sendMultiChannelNotification } = require('../services/notificationService');
-const { ALL_WEBHOOK_SETTING_KEYS, GPS_RENEWAL_SMS_SETTING_KEY, sendSavedWebhookNotifications, sendNewLeadSmsNotification } = require('../services/savedWebhookNotifications');
+const { ALL_WEBHOOK_SETTING_KEYS, GPS_RENEWAL_SMS_SETTING_KEY, sendSavedWebhookNotifications } = require('../services/savedWebhookNotifications');
 const { mobileFromContact, eligibleForExpiredSms, sendGpsRenewalSms } = require('../services/gpsRenewalSms');
 const { validDateOnly, buildGreeting, deliverGreeting } = require('../services/customerGreetings');
 const { isGroupMember, groupAccessWhere } = require('../utils/accessPolicy');
@@ -24,6 +24,12 @@ const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(re
 const queueMultiChannelNotification = (payload) => setImmediate(() => {
   sendMultiChannelNotification(payload).catch((error) => console.error('Background notification failed:', error.message));
 });
+
+function leadManagementSourceWhere(group = 'All') {
+  return group === 'All'
+    ? { OR: [{ source: { not: 'Facebook' } }, { source: 'Facebook', facebookLeadId: null }] }
+    : { source: { not: 'Facebook' } };
+}
 
 const ADMIN = ['super_admin', 'director'];
 const SALES = [...ADMIN, 'sales_manager', 'sales_executive'];
@@ -686,7 +692,7 @@ router.get('/leads-export.xlsx', authMiddleware, checkRole(SALES), asyncHandler(
     return res.status(400).json({ message: 'Invalid lead export filter.' });
   }
   const records = await prisma.leads.findMany({
-    where: { ...leadAccessWhere(req.user), ...(group === 'Facebook Leads' ? {} : { source: { not: 'Facebook' } }) },
+    where: { ...leadAccessWhere(req.user), ...(group === 'Facebook Leads' ? {} : leadManagementSourceWhere(group)) },
     orderBy: { createdAt: 'desc' },
     ...(await compatibilitySelect('leads'))
   });
@@ -978,7 +984,7 @@ router.post('/gps-renewals/import', authMiddleware, checkRole([...SALES, ...FINA
 }));
 
 router.get('/leads/summary', authMiddleware, checkRole(SALES), asyncHandler(async (req, res) => {
-  const access = { ...leadAccessWhere(req.user), source: { not: 'Facebook' } };
+  const access = { ...leadAccessWhere(req.user), ...leadManagementSourceWhere() };
   const [total, won, newCount] = await Promise.all([
     prisma.leads.count({ where: access }),
     prisma.leads.count({ where: { ...access, status: 'Won' } }),
@@ -1027,8 +1033,9 @@ router.get('/accounts/summary', authMiddleware, checkRole(FINANCE), asyncHandler
 for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
   router.get(`/${routeName}`, authMiddleware, checkRole(config.readRoles), asyncHandler(async (req, res) => {
     const where = {};
+    const group = String(req.query.group || 'All');
     if (routeName === 'tasks' && !MANAGEMENT.includes(req.user.role)) where.assignedUserId = req.user.id;
-    if (routeName === 'leads') Object.assign(where, leadAccessWhere(req.user), { source: { not: 'Facebook' } });
+    if (routeName === 'leads') Object.assign(where, leadAccessWhere(req.user), leadManagementSourceWhere(group));
     if (routeName === 'installations') {
       if (req.user.role === 'gps_installer') {
         where.type = 'GPS';
@@ -1053,7 +1060,6 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     const orderDirection = routeName === 'employees' ? 'asc' : 'desc';
     const orderBy = [{ [orderField]: orderDirection }, { id: orderDirection }];
     const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
-    const group = String(req.query.group || 'All');
     const service = String(req.query.service || 'All');
     if ((routeName === 'leads' && (search || group !== 'All')) || (routeName === 'customers' && (search || service !== 'All'))) {
       const select = routeName === 'leads'
@@ -1247,8 +1253,8 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
         textContent: `Hello ${record.name}, thank you for contacting us about ${record.service}.`,
         channels: ['email']
       });
-      setImmediate(() => sendNewLeadSmsNotification(prisma, record.phone)
-        .catch(error => console.error('[Webhook] New lead SMS failed to load settings:', error.message)));
+      setImmediate(() => sendSavedWebhookNotifications(prisma, record.phone)
+        .catch(error => console.error('[Webhook] New lead notifications failed to load settings:', error.message)));
     }
     if (routeName === 'installations') {
       await broadcastNotification(req, {

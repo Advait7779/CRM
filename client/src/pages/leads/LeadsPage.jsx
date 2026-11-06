@@ -145,7 +145,7 @@ export function LeadModal({ lead, onClose, onSave, isNew, isAdmin, productOption
           </div>
           {isNew && (
             <div style={{ padding: 14, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 10, marginBottom: 16, fontSize: 13, color: '#10b981' }}>
-              SMS will be sent if the New Lead SMS URL is configured. Email requires SMTP configuration.
+              Configured customer notification URLs also run for this lead. Email requires SMTP configuration.
             </div>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

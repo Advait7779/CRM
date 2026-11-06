@@ -24,7 +24,6 @@ const GREETING_OPTIONS = [
 ]
 const SETTING_KEYS = [
   ...CUSTOMER_SETTING_KEYS,
-  'new_lead_sms_webhook_url',
   'gps_renewal_expired_sms_webhook_url',
   ...GREETING_OPTIONS.flatMap(option => [
     `greeting_${option.occasion}_${option.channel}_webhook_url`,
@@ -87,13 +86,13 @@ export default function SettingsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">Configure notification URLs for customers, greetings, and Justdial enquiries.</p>
+          <p className="page-subtitle">Configure notification URLs for customers, manual leads, greetings, and Justdial enquiries.</p>
         </div>
       </div>
 
       <form onSubmit={saveSettings}>
-        <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>New Customer Notifications</h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>These four URLs run when a customer profile is created.</p>
+        <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>New Customer & Manual Lead Notifications</h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>These four URLs run when a customer profile or a manually entered lead is created.</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
           {/* SMS API Webhook */}
           <div className="glass-card" style={{ padding: 28 }}>
@@ -211,22 +210,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-
-        <section className="glass-card" style={{ padding: 28, marginTop: 36 }}>
-          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>New Lead SMS</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>Runs when a lead is created in this CRM. Use an approved enquiry template; the New Customer SMS URL above remains for customer profiles.</p>
-          <div className="form-group">
-            <label className="form-label">New Lead SMS URL</label>
-            <textarea
-              className="input-field"
-              value={form.new_lead_sms_webhook_url}
-              onChange={e => setForm(current => ({ ...current, new_lead_sms_webhook_url: e.target.value }))}
-              placeholder="https://provider.example/send-sms?number={phone}&templateid=..."
-              style={{ minHeight: 92, fontSize: 12, fontFamily: 'monospace', resize: 'vertical', lineHeight: 1.5 }}
-            />
-            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>Use {'{phone}'} in the recipient parameter, or an existing phone/number parameter will be replaced.</p>
-          </div>
-        </section>
 
         <section className="glass-card" style={{ padding: 28, marginTop: 36 }}>
           <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>Expired GPS Renewal SMS</h2>

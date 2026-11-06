@@ -26,7 +26,8 @@ const leads = [
   { id: 15, name: 'Unassigned CCTV enquiry', phone: '9000000015', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', exec: null, createdAt: new Date() },
   { id: 16, name: 'Other CCTV enquiry', phone: '9000000016', source: 'Justdial', service: 'CCTV Installation', justdialProduct: 'CCTV', exec: 'CCTV too', createdAt: new Date() },
   { id: 17, name: 'Assigned referral', phone: '9000000017', source: 'Reference', service: 'CCTV', justdialProduct: 'CCTV', exec: 'shubhangi', createdAt: new Date() },
-  { id: 18, name: 'Wrong product assigned', phone: '9000000018', source: 'Facebook', service: 'GPS Tracking', justdialProduct: 'GPS & Fuel Sensor', exec: 'Shubhangi', createdAt: new Date() }
+  { id: 18, name: 'Wrong product assigned', phone: '9000000018', source: 'Facebook', service: 'GPS Tracking', justdialProduct: 'GPS & Fuel Sensor', exec: 'Shubhangi', createdAt: new Date() },
+  { id: 20, name: 'Sheet Facebook lead', phone: '9000000020', source: 'Facebook', facebookLeadId: 'l:20', service: 'GPS Tracking', justdialProduct: 'GPS & Fuel Sensor', exec: null, createdAt: new Date() }
 ];
 function matchesWhere(lead, where = {}) {
   if (where.AND && !where.AND.every(clause => matchesWhere(lead, clause))) return false;
@@ -38,6 +39,7 @@ function matchesWhere(lead, where = {}) {
       if (lead.source === where.source.not) return false;
     } else if (lead.source !== where.source) return false;
   }
+  if (where.facebookLeadId === null && lead.facebookLeadId != null) return false;
   if (where.justdialProduct?.in && !where.justdialProduct.in.includes(lead.justdialProduct)) return false;
   if (where.exec?.equals && String(lead.exec || '').toLowerCase() !== where.exec.equals.toLowerCase()) return false;
   return true;
@@ -93,7 +95,7 @@ test('Leads API scopes products across sources regardless of executive while Set
     return { status: response.status, data: await response.json() };
   };
 
-  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14, 15, 16, 17]], [2, [11, 15, 16, 17]], [3, [12]], [4, [11, 15, 16, 17]], [5, [11, 15, 16, 17]]]) {
+  for (const [userId, expectedIds] of [[1, [11, 12, 13, 14, 15, 16, 17, 18]], [2, [11, 15, 16, 17]], [3, [12, 18]], [4, [11, 15, 16, 17]], [5, [11, 15, 16, 17]]]) {
     const result = await request(userId, '/leads');
     assert.equal(result.status, 200);
     assert.deepEqual(result.data.map(lead => lead.id), expectedIds);
@@ -103,10 +105,12 @@ test('Leads API scopes products across sources regardless of executive while Set
   assert.equal(page.data.total, 4);
   assert.deepEqual(page.data.rows.map(lead => lead.id), [16, 17]);
   const all = await request(1, '/leads?withTotal=1&page=1&pageSize=10');
-  assert.equal(all.data.total, 7);
-  assert.equal(all.data.rows.some(lead => lead.source === 'Facebook'), false);
-  assert.equal((await request(1, '/leads/summary')).data.total, 7);
-  assert.deepEqual((await request(3, '/leads?withTotal=1&search=9000000018')).data.rows, []);
+  assert.equal(all.data.total, 8);
+  assert.deepEqual(all.data.rows.filter(lead => lead.source === 'Facebook').map(lead => lead.id), [18]);
+  assert.equal((await request(1, '/leads/summary')).data.total, 8);
+  assert.deepEqual((await request(1, '/leads?withTotal=1&search=9000000018')).data.rows.map(lead => lead.id), [18]);
+  assert.deepEqual((await request(1, '/leads?withTotal=1&search=9000000020')).data.rows, []);
+  assert.deepEqual((await request(3, '/leads?withTotal=1&search=9000000018')).data.rows.map(lead => lead.id), [18]);
   assert.equal((await request(2, '/leads/12')).status, 404);
   assert.equal((await request(2, '/leads/12', 'PUT', { status: 'Contacted' })).status, 404);
   assert.equal((await request(2, '/leads/11')).status, 200);
@@ -135,10 +139,12 @@ test('Leads API scopes products across sources regardless of executive while Set
   const adminHeaders = { Authorization: `Bearer ${jwt.sign({ id: 1, tokenVersion: 0 }, process.env.JWT_SECRET)}` };
   const regularExport = await fetch(`${base}/leads-export.xlsx?group=All`, { headers: adminHeaders });
   const regularWorkbook = await new ExcelJS.Workbook().xlsx.load(Buffer.from(await regularExport.arrayBuffer()));
-  assert.equal(regularWorkbook.getWorksheet('Leads').getCell('B13').value, null, 'regular export excludes the Facebook lead');
+  assert.equal(regularWorkbook.getWorksheet('Leads').getCell('B13').value, 'Wrong product assigned', 'All export includes manually entered Facebook leads');
+  assert.equal(regularWorkbook.getWorksheet('Leads').getCell('B14').value, null, 'All export excludes sheet-imported Facebook leads');
   const facebookExport = await fetch(`${base}/leads-export.xlsx?group=Facebook%20Leads`, { headers: adminHeaders });
   const facebookWorkbook = await new ExcelJS.Workbook().xlsx.load(Buffer.from(await facebookExport.arrayBuffer()));
   assert.equal(facebookWorkbook.getWorksheet('Leads').getCell('B6').value, 'Wrong product assigned');
+  assert.equal(facebookWorkbook.getWorksheet('Leads').getCell('B7').value, 'Sheet Facebook lead');
   assert.equal((await request(2, '/leads-export.xlsx?group=invalid')).status, 400);
 
   assert.equal((await request(2, '/leads/11', 'PUT', { notes: 'Changed by sales' })).status, 403);
@@ -155,12 +161,10 @@ test('Leads API scopes products across sources regardless of executive while Set
   assert.equal((await request(2, '/settings')).status, 403);
   const saved = await request(1, '/settings', 'PUT', {
     sms_webhook_url: 'https://provider.example/customer?number=000',
-    new_lead_sms_webhook_url: 'https://provider.example/new-lead?number=000',
     justdial_cctv_sms_webhook_url: 'https://provider.example/cctv?number=000'
   });
   assert.equal(saved.status, 200);
   assert.equal(saved.data.sms_webhook_url, 'https://provider.example/customer?number=000');
-  assert.equal(saved.data.new_lead_sms_webhook_url, 'https://provider.example/new-lead?number=000');
   assert.equal(saved.data.justdial_cctv_sms_webhook_url, 'https://provider.example/cctv?number=000');
   assert.deepEqual(Object.keys(saved.data).sort(), [...ALL_WEBHOOK_SETTING_KEYS].sort());
 });

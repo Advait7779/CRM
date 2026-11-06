@@ -8,7 +8,7 @@ const DIGITAL_PRODUCTS = new Set([
 ])
 
 function leadMatchesGroup(lead, group) {
-  if (group === 'All') return true
+  if (group === 'All') return lead.source !== 'Facebook' || !lead.facebookLeadId
   if (group === 'Website Leads') return Boolean(lead.websiteLeadId)
   if (group === 'Facebook Leads') return lead.source === 'Facebook'
   if (lead.justdialProduct) {

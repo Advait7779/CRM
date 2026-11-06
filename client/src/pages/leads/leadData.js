@@ -6,8 +6,8 @@ const DIGITAL_PRODUCTS = new Set([
 ])
 
 export function leadMatchesGroup(lead, group) {
+  if (group === 'All') return lead.source !== 'Facebook' || !lead.facebookLeadId
   if (lead.source === 'Facebook') return false
-  if (group === 'All') return true
   if (group === 'Website Leads') return Boolean(lead.websiteLeadId)
   if (lead.justdialProduct) {
     if (group === 'GPS & Fuel Sensor') return lead.justdialProduct === 'GPS & Fuel Sensor'

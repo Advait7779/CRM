@@ -32,6 +32,13 @@ test('Facebook Leads and Excel use the original enquiry date', () => {
   assert.equal(workbook.getWorksheet('Leads').getCell('I6').value.toISOString(), '2026-10-26T22:04:00.000Z')
 })
 
+test('All includes manual Facebook leads but leaves sheet imports in Facebook Leads', () => {
+  const manual = { id: 8, name: 'Manual Facebook lead', source: 'Facebook', service: 'GPS Tracking' }
+  const imported = { id: 9, name: 'Sheet Facebook lead', source: 'Facebook', facebookLeadId: 'l:9', service: 'GPS Tracking' }
+  assert.deepEqual(filterLeads([manual, imported], 'All', '').map(lead => lead.id), [8])
+  assert.deepEqual(filterLeads([manual, imported], 'Facebook Leads', '').map(lead => lead.id), [8, 9])
+})
+
 test('Website Leads includes imported enquiries but excludes manually entered Website leads', async () => {
   const imported = {
     id: 6, name: 'Imported customer', phone: '1234567894', source: 'Website',

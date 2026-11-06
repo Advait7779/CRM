@@ -6,7 +6,6 @@ const WEBHOOK_SETTING_KEYS = [
   'rcs_webhook_url',
   'voice_call_webhook_url'
 ];
-const NEW_LEAD_SMS_SETTING_KEY = 'new_lead_sms_webhook_url';
 const GPS_RENEWAL_SMS_SETTING_KEY = 'gps_renewal_expired_sms_webhook_url';
 const JUSTDIAL_GROUPS = ['cctv', 'gps_fuel', 'digital'];
 const JUSTDIAL_CHANNELS = ['sms', 'rcs', 'voice', 'whatsapp'];
@@ -21,7 +20,7 @@ const GREETING_SETTING_KEYS = GREETING_OCCASIONS.flatMap(occasion =>
     `greeting_${occasion}_${channel}_preview_text`
   ])
 );
-const ALL_WEBHOOK_SETTING_KEYS = [...WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, GPS_RENEWAL_SMS_SETTING_KEY, ...JUSTDIAL_WEBHOOK_SETTING_KEYS, ...GREETING_SETTING_KEYS];
+const ALL_WEBHOOK_SETTING_KEYS = [...WEBHOOK_SETTING_KEYS, GPS_RENEWAL_SMS_SETTING_KEY, ...JUSTDIAL_WEBHOOK_SETTING_KEYS, ...GREETING_SETTING_KEYS];
 
 function webhookUrlForPhone(template, phone) {
   const digits = String(phone || '').replace(/[^0-9]/g, '');
@@ -74,19 +73,6 @@ async function sendSavedWebhookNotifications(prisma, phone, fetchImpl = fetch) {
   return sendConfiguredUrls(rows, () => phone, fetchImpl);
 }
 
-async function sendNewLeadSmsNotification(prisma, phone, fetchImpl = fetch) {
-  if (!String(phone || '').replace(/[^0-9]/g, '')) {
-    console.log('[Webhook] New lead SMS skipped: no valid phone number.');
-    return [];
-  }
-  const rows = await prisma.appSettings.findMany({ where: { key: NEW_LEAD_SMS_SETTING_KEY } });
-  if (!rows.some(row => row.value?.trim())) {
-    console.log('[Webhook] New lead SMS skipped: URL is not configured in Settings.');
-    return [];
-  }
-  return sendConfiguredUrls(rows, () => phone, fetchImpl);
-}
-
 async function sendJustdialWebhookNotifications(prisma, lead, payload, fetchImpl = fetch) {
   const group = notificationGroupForProduct(lead.justdialProduct);
   if (!group) {
@@ -131,7 +117,7 @@ async function sendWebsiteLeadWebhookNotifications(prisma, lead, fetchImpl = fet
 }
 
 module.exports = {
-  WEBHOOK_SETTING_KEYS, NEW_LEAD_SMS_SETTING_KEY, GPS_RENEWAL_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, GREETING_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
-  webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendNewLeadSmsNotification, sendJustdialWebhookNotifications,
+  WEBHOOK_SETTING_KEYS, GPS_RENEWAL_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, GREETING_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
+  webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendJustdialWebhookNotifications,
   sendWebsiteLeadWebhookNotifications
 };
