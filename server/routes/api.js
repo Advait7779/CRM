@@ -187,7 +187,7 @@ const RESOURCE_CONFIG = {
   },
   invoices: {
     model: 'invoices',
-    fields: ['id', 'customer', 'date', 'amount', 'gst', 'total', 'status'],
+    fields: ['id', 'customerId', 'customer', 'date', 'amount', 'gst', 'total', 'status'],
     required: ['id', 'date', 'amount', 'gst'],
     roles: FINANCE,
     readRoles: [...FINANCE, 'sales_manager']
@@ -1140,6 +1140,7 @@ for (const [routeName, config] of Object.entries(RESOURCE_CONFIG)) {
     }
     requireFields(payload, config.required);
     await applyStableReferences(payload, config.model);
+    if (routeName === 'invoices') requireFields(payload, ['customer']);
     if (routeName === 'tasks' && !payload.assignedTo) return res.status(400).json({ message: 'Task assignee is required.' });
     if (routeName === 'invoices') {
       payload.amount = validMoney(payload.amount, 'Invoice amount');
