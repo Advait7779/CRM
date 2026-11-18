@@ -71,6 +71,16 @@ async function visibleTabRows(prisma, user, tab, spreadsheetId) {
   });
 }
 
+function newestFirstRows(tab, rows) {
+  const dateColumn = tab.headers.findIndex(header => ['created_time', 'date'].includes(String(header).trim().toLowerCase()));
+  const timestamp = row => {
+    const value = row.lead?.submittedAt || (dateColumn >= 0 ? row.values[dateColumn] : null);
+    const time = value ? Date.parse(value) : NaN;
+    return Number.isNaN(time) ? -Infinity : time;
+  };
+  return [...rows].sort((a, b) => timestamp(b) - timestamp(a) || b.rowNumber - a.rowNumber);
+}
+
 function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetch, prewarm = true } = {}) {
   const router = express.Router();
   const tabCache = new Map();
@@ -171,8 +181,8 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     const tab = await getTab(gid);
     const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
     const available = await visibleTabRows(prisma, req.user, tab, config.spreadsheetId);
-    const rows = search ? available.filter(row => [...row.values, row.status, row.crm?.exec]
-      .some(value => String(value ?? '').toLowerCase().includes(search))) : available;
+    const rows = newestFirstRows(tab, search ? available.filter(row => [...row.values, row.status, row.crm?.exec]
+      .some(value => String(value ?? '').toLowerCase().includes(search))) : available);
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Sheet rows', { views: [{ state: 'frozen', xSplit: 2, ySplit: 1 }] });
     sheet.addRow(['Sheet row', 'Lead status', ...tab.headers]);
@@ -196,8 +206,8 @@ function createFacebookSheetRouter(prisma, { env = process.env, fetchImpl = fetc
     const tab = await getTab(gid, req.query.refresh === '1');
     const rows = await visibleTabRows(prisma, req.user, tab, config.spreadsheetId);
     const search = String(req.query.search || '').trim().toLowerCase().slice(0, 200);
-    const visible = search ? rows.filter(row => [...row.values, row.status, row.crm?.exec]
-      .some(value => String(value ?? '').toLowerCase().includes(search))) : rows;
+    const visible = newestFirstRows(tab, search ? rows.filter(row => [...row.values, row.status, row.crm?.exec]
+      .some(value => String(value ?? '').toLowerCase().includes(search))) : rows);
     const { page, pageSize, skip } = pagination(req.query);
     const mappedCount = rows.filter(row => row.crm).length;
     res.json({ tab: { gid: tab.gid, title: tab.title, kind: tab.kind, importable: tab.importable, reason: tab.reason },

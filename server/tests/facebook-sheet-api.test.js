@@ -80,8 +80,8 @@ const { createFacebookSheetRouter } = require('../routes/facebookSheet');
 
 const metaHeader = ['id', 'created_time', 'ad_id', 'ad_name', 'adset_id', 'adset_name', 'campaign_id', 'campaign_name', 'form_id', 'form_name', 'is_organic', 'platform', 'what_services_are_you_looking_for?', 'full_name', 'phone_number', 'email', 'city', 'lead_status'];
 const metaRows = [metaHeader,
-  ['l:201', '2026-10-26T22:04:23+05:30', '', '', '', '', '', '', '', '', 'false', 'ig', 'whatsapp_api_for_business', 'WhatsApp customer', 'p:+919000000001', '', 'Pune', 'CREATED'],
-  ['l:202', '2026-10-26T21:04:23+05:30', '', '', '', '', '', '', '', '', 'false', 'fb', 'sms_marketing', 'SMS customer', 'p:+919000000002', '', 'Mumbai', 'CREATED']
+  ['l:201', '2026-10-26T21:04:23+05:30', '', '', '', '', '', '', '', '', 'false', 'ig', 'whatsapp_api_for_business', 'WhatsApp customer', 'p:+919000000001', '', 'Pune', 'CREATED'],
+  ['l:202', '2026-10-26T22:04:23+05:30', '', '', '', '', '', '', '', '', 'false', 'fb', 'sms_marketing', 'SMS customer', 'p:+919000000002', '', 'Mumbai', 'CREATED']
 ];
 const otherRows = [['ID', 'Name', 'Phone'], ['42', 'Website customer', '9000000000']];
 let sheetReads = 0;
@@ -125,6 +125,9 @@ test('tab browsing respects sales permissions; only admins can sync mapped Meta 
   assert.equal(meta.status, 200);
   assert.equal(meta.body.total, 1);
   assert.equal(meta.body.rows[0].lead.name, 'WhatsApp customer');
+  const newest = await request(1, '/tabs/1497736270?pageSize=1');
+  assert.equal(newest.body.rows[0].lead.name, 'SMS customer');
+  assert.equal((await request(1, '/tabs/1497736270?pageSize=1&page=2')).body.rows[0].lead.name, 'WhatsApp customer');
   const firstReadCount = sheetReads;
   assert.equal((await request(2, '/tabs/1497736270?page=2')).status, 200);
   assert.equal(sheetReads, firstReadCount);
