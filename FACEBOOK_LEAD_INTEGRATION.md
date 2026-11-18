@@ -2,7 +2,7 @@
 
 The CRM reads [Advait - Nov'26 Lead Sheet](https://docs.google.com/spreadsheets/d/16wyHLQBQcCqPTKKM3snje5xrAZqM4MF1vekrmzu9-VE/edit). The workbook link is enough to discover its tabs; individual tab URLs are unnecessary. **Facebook Leads** in the sidebar lists those tabs dynamically. Selecting a tab displays its rows and CRM status. Administrators can sync tabs with a recognizable Meta lead layout into the CRM. The three shorter historical tabs without Meta lead IDs can be inspected but cannot be synced into CRM. The **All CRM Facebook leads** view includes manual CRM entries and previously imported leads, including historical imports from the retired workbook.
 
-The **All-in-One-Nov'26** tab (gid `1627876618`) is on the automatic five-minute sync. The **Computer Repair**, **GPS Tracker-Nov'26**, and **Fuel-Tracking-Device-Nov'26** tabs can be synced on demand. Both `fb` and `ig` platform rows become source `Facebook`; the original platform is retained. The integration never writes to the Google Sheet.
+The **All-in-One-Nov'26**, **Computer Repair**, **GPS Tracker-Nov'26**, and **Fuel-Tracking-Device-Nov'26** Meta lead tabs are checked on the automatic five-minute sync. Other new tabs with the same Meta ID layout are discovered automatically. Historical tabs without Meta IDs remain view-only. Both `fb` and `ig` platform rows become source `Facebook`; the original platform is retained. The integration never writes to the Google Sheet.
 
 ## Deployment setup: Apps Script (recommended)
 
@@ -43,6 +43,7 @@ If the browser reports `404 API endpoint not found` for `/api/facebook-sheet/tab
 - `created_time` becomes `facebookSubmittedAt` and is shown as the lead date. CRM `createdAt` records import time.
 - The `p:` phone prefix is removed. Email is optional. Sheet platform, campaign, form, city, extra note columns, and the complete source row are retained in the lead notes or payload.
 - The sheet's `lead_status` is preserved in `facebookPayload`. CRM status starts as **New** and is then managed by sales staff.
+- After the notification update is deployed, the first Facebook sheet sync records a notification start time. Existing sheet rows and already imported CRM leads are not messaged. New imported leads submitted after that time use the matching Justdial product group's saved SMS, RCS, and WhatsApp URLs once. Unclassified leads have no matching message group and are skipped. Provider HTTP success is logged by channel; actual handset delivery must be checked with the messaging provider.
 - Existing CRM product access rules still apply. Rows selecting `other` are classified as **Unclassified**, so administrators see them while sales users need an appropriate product classification before the rows enter their scoped lead list.
 - All sales roles can open the new page. Raw rows from unmapped tabs are visible only to Super Admin and Director; only those roles can start a tab sync. Rows in mapped tabs are limited by the existing product permissions for sales staff.
 - If credentials are missing, the sync stays disabled and logs only which setting needs attention. Header changes or Google API errors leave existing CRM records intact and are retried at the next interval.

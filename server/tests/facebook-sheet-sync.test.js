@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { sheetConfig, configurationIssues, listFacebookTabs, readFacebookTab, analyzeFacebookTab, rowToLead, processFacebookSheetLeads } = require('../services/facebookSheetSync');
+const { sheetConfig, configurationIssues, listFacebookTabs, readFacebookTab, analyzeFacebookTab, rowToLead, processFacebookSheetLeads, processAllFacebookSheetLeads } = require('../services/facebookSheetSync');
 
 const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const env = {
@@ -172,20 +172,29 @@ test('new Computer Repair tab maps its service question', () => {
 test('sync imports both platforms once and preserves CRM status on repeat scans', async () => {
   const saved = new Map();
   const links = new Set();
-  const prisma = { facebookSheetRowStatuses: { async findMany() { return []; } }, leads: {
+  const notifications = [];
+  let notificationSetting;
+  const sendCustomerNotifications = async (_prisma, lead) => { notifications.push(lead.facebookLeadId); };
+  const prisma = { appSettings: {
+    async findUnique() { return notificationSetting || null; },
+    async create({ data }) { notificationSetting = data; return data; }
+  }, facebookSheetRowStatuses: { async findMany() { return []; } }, leads: {
     async findMany({ where }) { return [...saved.values()].filter(lead => where.facebookLeadId.in.includes(lead.facebookLeadId)); },
-    async createMany({ data }) {
-      let count = 0;
+    async createManyAndReturn({ data }) {
+      const created = [];
       for (const lead of data) {
         if (saved.has(lead.facebookLeadId)) continue;
-        saved.set(lead.facebookLeadId, { ...lead, id: saved.size + 1 });
-        count += 1;
+        const row = { ...lead, id: saved.size + 1 };
+        saved.set(lead.facebookLeadId, row);
+        created.push(row);
       }
-      return { count };
+      return created;
     },
     async create({ data }) {
       assert.equal(data.source, 'Facebook');
-      saved.set(data.facebookLeadId, { ...data, id: saved.size + 1 });
+      const row = { ...data, id: saved.size + 1 };
+      saved.set(data.facebookLeadId, row);
+      return row;
     }
   }, facebookLeadTabs: { async createMany({ data }) {
     let count = 0;
@@ -195,12 +204,13 @@ test('sync imports both platforms once and preserves CRM status on repeat scans'
     }
     return { count };
   } } };
-  const first = await processFacebookSheetLeads(prisma, { env, fetchImpl: fakeFetch });
+  const first = await processFacebookSheetLeads(prisma, { env, fetchImpl: fakeFetch, sendCustomerNotifications });
   assert.equal(first.imported, 2);
   assert.equal(first.mapped, 2);
+  assert.equal(first.notificationsQueued, 0, 'existing sheet rows are not messaged at activation');
   assert.deepEqual([...saved.keys()], ['l:101', 'l:102']);
   saved.get('l:102').status = 'Connected';
-  const second = await processFacebookSheetLeads(prisma, { env, fetchImpl: fakeFetch });
+  const second = await processFacebookSheetLeads(prisma, { env, fetchImpl: fakeFetch, sendCustomerNotifications });
   assert.equal(second.imported, 0);
   assert.equal(second.mapped, 0);
   assert.equal(saved.get('l:102').status, 'Connected');
@@ -212,11 +222,29 @@ test('sync imports both platforms once and preserves CRM status on repeat scans'
     if (url.includes('/values/')) return { ok: true, json: async () => ({ values: [headers, rows[1]] }) };
     return fakeFetch(url, options);
   };
-  const third = await processFacebookSheetLeads(prisma, { env, fetchImpl: anotherTabFetch, gid: 44413567 });
+  const third = await processFacebookSheetLeads(prisma, { env, fetchImpl: anotherTabFetch, gid: 44413567, sendCustomerNotifications });
   assert.equal(third.imported, 0);
   assert.equal(third.mapped, 1);
   assert.equal(saved.size, 2);
   assert.equal(saved.get('l:102').status, 'Connected');
+
+  const fresh = [...rows[1]];
+  fresh[0] = 'l:103';
+  fresh[1] = new Date(Date.now() + 1000).toISOString();
+  const unclassified = [...fresh];
+  unclassified[0] = 'l:104';
+  unclassified[12] = 'other';
+  const freshFetch = async (url, options) => url.includes('/values/')
+    ? { ok: true, json: async () => ({ values: [headers, ...rows.slice(1), fresh, unclassified] }) }
+    : fakeFetch(url, options);
+  const fourth = await processFacebookSheetLeads(prisma, { env, fetchImpl: freshFetch, sendCustomerNotifications });
+  assert.equal(fourth.imported, 2);
+  assert.equal(fourth.notificationsQueued, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(notifications, ['l:103']);
+  const fifth = await processFacebookSheetLeads(prisma, { env, fetchImpl: freshFetch, sendCustomerNotifications });
+  assert.equal(fifth.notificationsQueued, 0);
+  assert.deepEqual(notifications, ['l:103']);
 });
 
 test('changed sheet headers stop the sync before any writes', async () => {
@@ -225,7 +253,48 @@ test('changed sheet headers stop the sync before any writes', async () => {
     if (url.includes('/values/')) return { ok: true, json: async () => ({ values: [['wrong', ...headers.slice(1)], ...rows.slice(1)] }) };
     return result;
   };
-  await assert.rejects(processFacebookSheetLeads({ leads: {} }, { env, fetchImpl: badFetch }), /header layout/);
+  await assert.rejects(processFacebookSheetLeads({
+    appSettings: { async findUnique() { return { value: new Date().toISOString() }; } }, leads: {}
+  }, { env, fetchImpl: badFetch }), /header layout/);
+});
+
+test('automatic sync imports every Meta tab and leaves historical tabs read-only', async () => {
+  const saved = new Map();
+  let valueReads = 0;
+  const allTabsFetch = async (url, options) => {
+    if (url === 'https://oauth2.googleapis.com/token') return fakeFetch(url, options);
+    if (url.includes('?fields=')) return { ok: true, json: async () => ({ sheets: [
+      { properties: { sheetId: 10, title: 'Computer Repair', index: 0, gridProperties: { columnCount: 26 } } },
+      { properties: { sheetId: 11, title: 'GPS Tracker', index: 1, gridProperties: { columnCount: 26 } } },
+      { properties: { sheetId: 12, title: 'Historical', index: 2, gridProperties: { columnCount: 26 } } }
+    ] }) };
+    valueReads += 1;
+    const title = decodeURIComponent(url);
+    const lead = [...rows[1]];
+    lead[0] = title.includes('GPS Tracker') ? 'l:402' : 'l:401';
+    return { ok: true, json: async () => ({ values: title.includes('Historical')
+      ? [['Date', 'full_name', 'phone_number'], ['11-16-26', 'Old Lead', '919000000002']]
+      : [headers, lead] }) };
+  };
+  const prisma = {
+    appSettings: { async findUnique() { return { value: new Date().toISOString() }; } },
+    facebookSheetRowStatuses: { async findMany() { return []; } },
+    leads: {
+      async findMany({ where }) { return [...saved.values()].filter(row => where.facebookLeadId.in.includes(row.facebookLeadId)); },
+      async createManyAndReturn({ data }) {
+        const created = data.map(row => ({ ...row, id: saved.size + 1 }));
+        for (const row of created) saved.set(row.facebookLeadId, row);
+        return created;
+      }
+    },
+    facebookLeadTabs: { async createMany({ data }) { return { count: data.length }; } }
+  };
+  const result = await processAllFacebookSheetLeads(prisma, { env, fetchImpl: allTabsFetch,
+    sendCustomerNotifications: async () => { throw new Error('Historical leads must not be messaged'); } });
+  assert.equal(result.imported, 2);
+  assert.equal(result.notificationsQueued, 0);
+  assert.deepEqual([...saved.keys()], ['l:401', 'l:402']);
+  assert.equal(valueReads, 3, 'each tab is fetched only once');
 });
 
 test('new Meta layouts map safely while historical tabs remain read-only', () => {

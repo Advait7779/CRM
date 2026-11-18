@@ -23,8 +23,13 @@ const users = new Map([
 const saved = new Map();
 const links = new Set();
 const rowStatuses = new Map();
+let notificationSetting;
 const prisma = {
   users: { async findUnique({ where }) { return users.get(where.id) || null; } },
+  appSettings: {
+    async findUnique() { return notificationSetting || null; },
+    async create({ data }) { notificationSetting = data; return data; }
+  },
   leads: {
     async findMany({ where, skip = 0, take = 10000 }) {
       let rows = [...saved.values()];
@@ -39,14 +44,15 @@ const prisma = {
       Object.assign(row, data);
       return row;
     },
-    async createMany({ data }) {
-      let count = 0;
+    async createManyAndReturn({ data }) {
+      const created = [];
       for (const row of data) {
         if (saved.has(row.facebookLeadId)) continue;
-        saved.set(row.facebookLeadId, { ...row, id: saved.size + 1 });
-        count += 1;
+        const lead = { ...row, id: saved.size + 1 };
+        saved.set(row.facebookLeadId, lead);
+        created.push(lead);
       }
-      return { count };
+      return created;
     }
   },
   facebookLeadTabs: {

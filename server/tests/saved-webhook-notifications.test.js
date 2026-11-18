@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   WEBHOOK_SETTING_KEYS, JUSTDIAL_WEBHOOK_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
   webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendJustdialWebhookNotifications,
-  sendWebsiteLeadWebhookNotifications
+  sendWebsiteLeadWebhookNotifications, sendFacebookLeadWebhookNotifications
 } = require('../services/savedWebhookNotifications');
 
 test('saved notification URLs replace number or phone and otherwise append phone', () => {
@@ -158,4 +158,26 @@ test('Website leads with invalid phone or missing settings are safely skipped', 
   assert.equal(noSettings.length, 0);
   const safeWithoutAppSettings = await sendWebsiteLeadWebhookNotifications({}, { name: 'Test', phone: '9876543210' });
   assert.equal(safeWithoutAppSettings.length, 0);
+});
+
+test('Facebook leads use the matching Justdial SMS, RCS and WhatsApp URLs only', async () => {
+  const requested = [];
+  const prisma = { appSettings: { async findMany({ where }) {
+    assert.deepEqual(where.key.in, [
+      'justdial_gps_fuel_sms_webhook_url',
+      'justdial_gps_fuel_rcs_webhook_url',
+      'justdial_gps_fuel_whatsapp_webhook_url'
+    ]);
+    return where.key.in.map(key => ({ key, value: `https://provider.example/send?channel=${key}&number=000&sms=Hello+%5Balp%5D` }));
+  } } };
+  const fetchImpl = async url => { requested.push(new URL(url)); return { ok: true, status: 200 }; };
+  const result = await sendFacebookLeadWebhookNotifications(prisma,
+    { id: 42, name: 'Example Lead', phone: '+919000000001', justdialProduct: 'GPS & Fuel Sensor' }, fetchImpl);
+  assert.equal(result.length, 3);
+  assert.equal(requested.length, 3);
+  assert.ok(requested.every(url => url.searchParams.get('number') === '919000000001'));
+  assert.ok(requested.every(url => url.searchParams.get('sms') === 'Hello Example Lead'));
+  assert.equal(await sendFacebookLeadWebhookNotifications(prisma,
+    { id: 43, phone: '+919000000002', justdialProduct: 'Unclassified' }, fetchImpl).then(rows => rows.length), 0);
+  assert.equal(requested.length, 3);
 });

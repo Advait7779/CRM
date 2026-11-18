@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { prepareData } = require('../utils/prismaData');
-const { classifyJustdialCategory } = require('./justdialProducts');
+const { classifyJustdialCategory, notificationGroupForProduct } = require('./justdialProducts');
+const { sendFacebookLeadWebhookNotifications } = require('./savedWebhookNotifications');
 
 const DEFAULT_SPREADSHEET_ID = '16wyHLQBQcCqPTKKM3snje5xrAZqM4MF1vekrmzu9-VE';
 const DEFAULT_SHEET_ID = 1627876618;
@@ -24,6 +25,41 @@ const BRIDGE_CONCURRENCY = 4;
 let cachedToken = null;
 const tabListCache = new WeakMap();
 const TAB_LIST_TTL_MS = 10 * 60_000;
+const NOTIFICATION_START_KEY = 'facebook_sheet_notifications_started_at';
+
+async function notificationStartAt(prisma) {
+  let setting = await prisma.appSettings.findUnique({ where: { key: NOTIFICATION_START_KEY } });
+  if (!setting) {
+    const now = new Date();
+    try {
+      setting = await prisma.appSettings.create({
+        data: { key: NOTIFICATION_START_KEY, value: now.toISOString(), updatedAt: now }
+      });
+    } catch (error) {
+      if (error.code !== 'P2002') throw error;
+      setting = await prisma.appSettings.findUnique({ where: { key: NOTIFICATION_START_KEY } });
+    }
+  }
+  const startedAt = new Date(setting?.value || '');
+  if (!setting?.value || Number.isNaN(startedAt.getTime())) throw new Error('Facebook notification start time is invalid.');
+  return startedAt;
+}
+
+function queueFacebookNotifications(prisma, leads, sendCustomerNotifications) {
+  if (!leads.length || typeof sendCustomerNotifications !== 'function') return;
+  setImmediate(() => {
+    let next = 0;
+    const worker = async () => {
+      while (next < leads.length) {
+        const lead = leads[next++];
+        try { await sendCustomerNotifications(prisma, lead); }
+        catch (error) { console.error(`Facebook lead ${lead.id} customer notification failed:`, error.message); }
+      }
+    };
+    Promise.all(Array.from({ length: Math.min(4, leads.length) }, worker))
+      .catch(error => console.error('Facebook lead notification queue failed:', error.message));
+  });
+}
 
 function sheetConfig(env = process.env) {
   return {
@@ -285,10 +321,14 @@ function rowToLead(headers, row, tab = {}) {
   };
 }
 
-async function processFacebookSheetLeads(prisma, { env = process.env, fetchImpl = fetch, gid } = {}) {
+async function processFacebookSheetLeads(prisma, {
+  env = process.env, fetchImpl = fetch, gid, analyzedTab,
+  sendCustomerNotifications = sendFacebookLeadWebhookNotifications
+} = {}) {
   const config = sheetConfig(env);
   if (configurationIssues(config).length) return { enabled: false, imported: 0 };
-  const tab = analyzeFacebookTab(await readFacebookTab(config, gid ?? config.sheetId, fetchImpl));
+  const notificationsStartedAt = await notificationStartAt(prisma);
+  const tab = analyzedTab || analyzeFacebookTab(await readFacebookTab(config, gid ?? config.sheetId, fetchImpl));
   if (!tab.importable) {
     const error = new Error(`Facebook sheet header layout cannot be imported: ${tab.reason}`);
     error.status = 422;
@@ -323,21 +363,36 @@ async function processFacebookSheetLeads(prisma, { env = process.env, fetchImpl 
     for (const lead of found) known.set(lead.facebookLeadId, lead.id);
   }
   let imported = 0;
+  const createdLeads = [];
   const missing = [...normalized.entries()].filter(([id]) => !known.has(id));
   for (let start = 0; start < missing.length; start += 100) {
     const batch = missing.slice(start, start + 100);
     try {
-      imported += (await prisma.leads.createMany({ data: batch.map(([, data]) => data), skipDuplicates: true })).count;
+      const inserted = await prisma.leads.createManyAndReturn({
+        data: batch.map(([, data]) => data), skipDuplicates: true,
+        select: { id: true, name: true, phone: true, justdialProduct: true, facebookLeadId: true, facebookSubmittedAt: true }
+      });
+      imported += inserted.length;
+      createdLeads.push(...inserted);
     } catch (error) {
       // Keep later rows moving if one row in a bulk insert has invalid data.
       for (const [id, data] of batch) {
-        try { await prisma.leads.create({ data }); imported += 1; }
+        try {
+          const lead = await prisma.leads.create({
+            data, select: { id: true, name: true, phone: true, justdialProduct: true, facebookLeadId: true, facebookSubmittedAt: true }
+          });
+          createdLeads.push(lead);
+          imported += 1;
+        }
         catch (rowError) {
           if (rowError.code !== 'P2002') { skipped += 1; console.error(`Facebook sheet lead ${id} could not be imported:`, rowError.message); }
         }
       }
     }
   }
+  const newLeads = createdLeads.filter(lead =>
+    new Date(lead.facebookSubmittedAt) >= notificationsStartedAt && notificationGroupForProduct(lead.justdialProduct));
+  queueFacebookNotifications(prisma, newLeads, sendCustomerNotifications);
   const mappings = [];
   for (let start = 0; start < ids.length; start += 250) {
     const found = await prisma.leads.findMany({
@@ -352,7 +407,27 @@ async function processFacebookSheetLeads(prisma, { env = process.env, fetchImpl 
   for (let start = 0; start < mappings.length; start += 250) {
     mapped += (await prisma.facebookLeadTabs.createMany({ data: mappings.slice(start, start + 250), skipDuplicates: true })).count;
     }
-  return { enabled: true, imported, mapped, skipped, examined: candidates.length, gid: tab.gid, title: tab.title };
+  return { enabled: true, imported, mapped, skipped, examined: candidates.length,
+    notificationsQueued: newLeads.length, gid: tab.gid, title: tab.title };
+}
+
+async function processAllFacebookSheetLeads(prisma, options = {}) {
+  const config = sheetConfig(options.env || process.env);
+  if (configurationIssues(config).length) return { enabled: false, imported: 0 };
+  const fetchImpl = options.fetchImpl || fetch;
+  const tabs = await listFacebookTabs(config, fetchImpl);
+  const result = { enabled: true, imported: 0, mapped: 0, skipped: 0, notificationsQueued: 0 };
+  for (const { gid } of tabs) {
+    try {
+      const analyzedTab = analyzeFacebookTab(await readFacebookTab(config, gid, fetchImpl));
+      if (!analyzedTab.importable) continue;
+      const tabResult = await processFacebookSheetLeads(prisma, { ...options, gid, analyzedTab });
+      for (const field of ['imported', 'mapped', 'skipped', 'notificationsQueued']) result[field] += tabResult[field] || 0;
+    } catch (error) {
+      console.error(`Facebook sheet tab ${gid} sync failed:`, error.message);
+    }
+  }
+  return result;
 }
 
 function startFacebookSheetSync(prisma, options = {}) {
@@ -367,8 +442,10 @@ function startFacebookSheetSync(prisma, options = {}) {
     if (running) return;
     running = true;
     try {
-      const result = await processFacebookSheetLeads(prisma, options);
-      if (result.imported || result.skipped) console.log(`Facebook sheet sync: ${result.imported} imported, ${result.skipped} skipped.`);
+      const result = await processAllFacebookSheetLeads(prisma, options);
+      if (result.imported || result.skipped || result.notificationsQueued) {
+        console.log(`Facebook sheet sync: ${result.imported} imported, ${result.skipped} skipped, ${result.notificationsQueued} customer notifications queued.`);
+      }
     } catch (error) {
       console.error('Facebook sheet sync failed:', error.message);
     } finally {
@@ -385,5 +462,5 @@ function startFacebookSheetSync(prisma, options = {}) {
 
 module.exports = {
   sheetConfig, configurationIssues, listFacebookTabs, readFacebookTab, readFacebookRows,
-  analyzeFacebookTab, rowToLead, processFacebookSheetLeads, startFacebookSheetSync
+  analyzeFacebookTab, rowToLead, processFacebookSheetLeads, processAllFacebookSheetLeads, startFacebookSheetSync
 };

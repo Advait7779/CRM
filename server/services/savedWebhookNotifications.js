@@ -116,8 +116,29 @@ async function sendWebsiteLeadWebhookNotifications(prisma, lead, fetchImpl = fet
   return sendConfiguredUrls(rows, () => phone, fetchImpl, lead?.name);
 }
 
+async function sendFacebookLeadWebhookNotifications(prisma, lead, fetchImpl = fetch) {
+  if (!prisma?.appSettings?.findMany) return [];
+  const group = notificationGroupForProduct(lead?.justdialProduct);
+  if (!group) {
+    console.log(`[Webhook] Facebook lead ${lead?.id || 'unknown'}: no matching message group.`);
+    return [];
+  }
+  const phone = String(lead?.phone || '').replace(/[^0-9]/g, '');
+  if (!phone) {
+    console.log(`[Webhook] Facebook lead ${lead?.id || 'unknown'}: no valid phone number.`);
+    return [];
+  }
+  const keys = ['sms', 'rcs', 'whatsapp'].map(channel => `justdial_${group}_${channel}_webhook_url`);
+  const rows = await prisma.appSettings.findMany({ where: { key: { in: keys } } });
+  const configured = new Set(rows.filter(row => row.value?.trim()).map(row => row.key));
+  for (const key of keys) {
+    if (!configured.has(key)) console.log(`[Webhook] Facebook lead ${lead?.id || 'unknown'}: ${key} is not configured.`);
+  }
+  return sendConfiguredUrls(rows, () => phone, fetchImpl, lead?.name);
+}
+
 module.exports = {
   WEBHOOK_SETTING_KEYS, GPS_RENEWAL_SMS_SETTING_KEY, JUSTDIAL_WEBHOOK_SETTING_KEYS, GREETING_SETTING_KEYS, ALL_WEBHOOK_SETTING_KEYS,
   webhookUrlForPhone, webhookUrlForName, sendSavedWebhookNotifications, sendJustdialWebhookNotifications,
-  sendWebsiteLeadWebhookNotifications
+  sendWebsiteLeadWebhookNotifications, sendFacebookLeadWebhookNotifications
 };
