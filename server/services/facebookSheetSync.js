@@ -2,8 +2,8 @@ const crypto = require('node:crypto');
 const { prepareData } = require('../utils/prismaData');
 const { classifyJustdialCategory } = require('./justdialProducts');
 
-const DEFAULT_SPREADSHEET_ID = '1S-ZvDpj2LSc6-z4Cs35PDzDDmsj-Ht_txQCOCOMeubs';
-const DEFAULT_SHEET_ID = 1497736270;
+const DEFAULT_SPREADSHEET_ID = '16wyHLQBQcCqPTKKM3snje5xrAZqM4MF1vekrmzu9-VE';
+const DEFAULT_SHEET_ID = 1627876618;
 const HEADERS = [
   'id', 'created_time', 'ad_id', 'ad_name', 'adset_id', 'adset_name',
   'campaign_id', 'campaign_name', 'form_id', 'form_name', 'is_organic',
@@ -12,13 +12,8 @@ const HEADERS = [
 ];
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SHEETS_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
-const NON_SALES_TABS = new Set([590930498, 1248816267]); // Website Cms and installer applications.
-const HEADERLESS_LAYOUTS = new Map([
-  [1146694168, ['id', 'created_time', 'ad_id', 'ad_name', 'adset_id', 'adset_name', 'campaign_id', 'campaign_name', 'form_id', 'form_name', 'is_organic', 'platform', 'what_services_are_you_looking_for?', 'full_name', 'phone_number', 'email', 'city', 'lead_status']],
-  [451346684, ['id', 'created_time', 'ad_id', 'ad_name', 'adset_id', 'adset_name', 'campaign_id', 'campaign_name', 'form_id', 'form_name', 'is_organic', 'platform', 'for_which_tracking_device_you_are_looking_to_buy?', 'full_name', 'phone_number', 'city', 'lead_status']]
-]);
 const SERVICE_FIELDS = [
-  'what_services_are_you_looking_for?', 'which_service_are_you_interested_in?',
+  'what_services_are_you_looking_for?', 'what_service_do_you_require?', 'which_service_are_you_interested_in?',
   'for_which_tracking_device_you_are_looking_to_buy?', 'what_device_you_are_looking_for?',
   'are_you_looking_for_fuel_tracking_device?', 'are_you_looking_to_buy_gps_tracking_device?',
   'are_you_looking_for_a_new_cctv_device_or_to_repair_cctv_device??', 'requirement_details?'
@@ -97,13 +92,16 @@ async function bridgeRequest(config, action, details = {}, fetchImpl = fetch) {
   const response = await fetchImpl(config.webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, secret: config.readSecret, ...details }),
+    body: JSON.stringify({ action, secret: config.readSecret, spreadsheetId: config.spreadsheetId, ...details }),
     redirect: 'follow',
     signal: AbortSignal.timeout(30000)
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success !== true) {
     throw new Error(`Facebook sheet Apps Script ${action} failed: ${data.error || `HTTP ${response.status}`}.`);
+  }
+  if (data.spreadsheetId !== config.spreadsheetId) {
+    throw new Error('Facebook sheet reader is connected to a different workbook. Update and redeploy its Apps Script.');
   }
   return data;
 }
@@ -240,23 +238,24 @@ function isMetaHeader(row) {
 
 function analyzeFacebookTab(tab) {
   const values = tab.values || [];
-  const synthetic = HEADERLESS_LAYOUTS.get(tab.gid);
-  const headerRowIndex = synthetic ? -1 : values.slice(0, 10).findIndex(isMetaHeader);
-  const importable = !NON_SALES_TABS.has(tab.gid) && (Boolean(synthetic) || headerRowIndex >= 0);
+  const headerRowIndex = values.slice(0, 10).findIndex(isMetaHeader);
+  const importable = headerRowIndex >= 0;
   const maxColumns = Math.min(52, Math.max(0, ...values.map(row => row.length)));
   const realHeader = headerRowIndex >= 0 ? values[headerRowIndex] : values[0] || [];
   const hasOtherHeader = !importable && ['id', 'ID', 'phone_number'].includes(String(realHeader[0] || ''));
-  const sourceHeaders = synthetic || (importable || hasOtherHeader ? realHeader : []);
+  const hasHistoricalHeader = !importable && ['date', 'created_time'].includes(String(realHeader[0] || '').toLowerCase())
+    && realHeader.includes('full_name') && realHeader.includes('phone_number');
+  const sourceHeaders = importable || hasOtherHeader || hasHistoricalHeader ? realHeader : [];
   const headers = Array.from({ length: maxColumns }, (_, index) => sourceHeaders[index] || `Column ${columnLetter(index)}`);
   const rows = values.map((row, index) => ({ rowNumber: index + 1, values: row })).filter(({ rowNumber, values: row }) =>
     row.some(value => String(value ?? '').trim())
     && (headerRowIndex < 0 || rowNumber !== headerRowIndex + 1)
     && !isMetaHeader(row)
-    && !(hasOtherHeader && rowNumber === 1));
+    && !((hasOtherHeader || hasHistoricalHeader) && rowNumber === 1));
   return {
     gid: tab.gid, title: tab.title, headers, rows, importable,
     kind: !rows.length ? 'empty' : importable ? 'meta' : 'other',
-    reason: importable ? null : NON_SALES_TABS.has(tab.gid) ? 'This tab is not a sales-lead source.' : 'A stable Meta lead ID, name, phone and platform could not be identified.'
+    reason: importable ? null : 'A stable Meta lead ID, name, phone and platform could not be identified.'
   };
 }
 

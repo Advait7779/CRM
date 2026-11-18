@@ -36,6 +36,8 @@ function fakeFetch(url, options) {
 
 test('configuration requires server-only service account credentials', () => {
   assert.deepEqual(configurationIssues(sheetConfig(env)), []);
+  assert.equal(sheetConfig({}).spreadsheetId, '16wyHLQBQcCqPTKKM3snje5xrAZqM4MF1vekrmzu9-VE');
+  assert.equal(sheetConfig({}).sheetId, 1627876618);
   assert.match(configurationIssues(sheetConfig({})).join(' '), /WEBHOOK_URL/);
   assert.match(configurationIssues(sheetConfig({ FACEBOOK_SHEET_CLIENT_EMAIL: env.FACEBOOK_SHEET_CLIENT_EMAIL })).join(' '), /PRIVATE_KEY/);
 });
@@ -54,14 +56,15 @@ test('Apps Script connection lists tabs and reads paged rows without a service a
     assert.equal(options.method, 'POST');
     const body = JSON.parse(options.body);
     assert.equal(body.secret, scriptEnv.FACEBOOK_SHEET_READ_SECRET);
+    assert.equal(body.spreadsheetId, config.spreadsheetId);
     calls.push(body);
-    if (body.action === 'listTabs') return { ok: true, json: async () => ({ success: true, tabs: [
+    if (body.action === 'listTabs') return { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, tabs: [
       { gid: 1497736270, title: "Allinone Leads - Oct'26", index: 0, rowCount: 3, columnCount: 19 }
     ] }) };
     assert.equal(body.action, 'readTab');
-    if (body.startRow === 1) return { ok: true, json: async () => ({ success: true, values: rows.slice(0, 2), nextRow: 3, hasMore: true }) };
+    if (body.startRow === 1) return { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, values: rows.slice(0, 2), nextRow: 3, hasMore: true }) };
     assert.equal(body.startRow, 3);
-    return { ok: true, json: async () => ({ success: true, values: rows.slice(2), nextRow: 4, hasMore: false }) };
+    return { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, values: rows.slice(2), nextRow: 4, hasMore: false }) };
   };
   assert.equal((await listFacebookTabs(config, scriptFetch)).length, 1);
   const tab = await readFacebookTab(config, 1497736270, scriptFetch);
@@ -70,9 +73,20 @@ test('Apps Script connection lists tabs and reads paged rows without a service a
   await assert.rejects(readFacebookTab(config, 1497736270, async (_url, options) => {
     const body = JSON.parse(options.body);
     return body.action === 'listTabs'
-      ? { ok: true, json: async () => ({ success: true, tabs: [{ gid: 1497736270, title: 'October', index: 0 }] }) }
-      : { ok: true, json: async () => ({ success: true, values: [], nextRow: 1, hasMore: true }) };
+      ? { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, tabs: [{ gid: 1497736270, title: 'October', index: 0 }] }) }
+      : { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, values: [], nextRow: 1, hasMore: true }) };
   }), /invalid tab rows/);
+});
+
+test('reader for a retired workbook is rejected before its tabs are displayed', async () => {
+  const config = sheetConfig({
+    FACEBOOK_SHEET_WEBHOOK_URL: 'https://script.google.com/macros/s/test-retired-deployment/exec',
+    FACEBOOK_SHEET_READ_SECRET: 'test-retired-script-secret-at-least-32-characters'
+  });
+  await assert.rejects(listFacebookTabs(config, async () => ({
+    ok: true,
+    json: async () => ({ success: true, spreadsheetId: 'retired-workbook', tabs: [{ gid: 1, title: 'Old tab', index: 0 }] })
+  })), /different workbook/);
 });
 
 test('Apps Script tab chunks are fetched concurrently and kept in sheet order', async () => {
@@ -84,7 +98,7 @@ test('Apps Script tab chunks are fetched concurrently and kept in sheet order', 
   let peak = 0;
   const scriptFetch = async (_url, options) => {
     const body = JSON.parse(options.body);
-    if (body.action === 'listTabs') return { ok: true, json: async () => ({ success: true, tabs: [
+    if (body.action === 'listTabs') return { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, tabs: [
       { gid: 1497736270, title: 'Large tab', index: 0, rowCount: 751, columnCount: 1 }
     ] }) };
     active += 1;
@@ -93,7 +107,7 @@ test('Apps Script tab chunks are fetched concurrently and kept in sheet order', 
     active -= 1;
     const count = Math.min(250, 752 - body.startRow);
     const values = Array.from({ length: count }, (_, index) => [String(body.startRow + index)]);
-    return { ok: true, json: async () => ({ success: true, values,
+    return { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, values,
       nextRow: body.startRow + count, hasMore: body.startRow + count <= 751 }) };
   };
   const tab = await readFacebookTab(config, 1497736270, scriptFetch);
@@ -113,14 +127,14 @@ test('updated Apps Script lists tabs once and reads 1000-row chunks', async () =
     const body = JSON.parse(options.body);
     if (body.action === 'listTabs') {
       listCalls += 1;
-      return { ok: true, json: async () => ({ success: true, tabs: [
+      return { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, tabs: [
         { gid: 1497736270, title: 'Updated tab', index: 0, maxPageSize: 1000 }
       ] }) };
     }
     limits.push(body.limit);
     const count = Math.min(body.limit, 3002 - body.startRow);
     const values = Array.from({ length: count }, (_, index) => [String(body.startRow + index)]);
-    return { ok: true, json: async () => ({ success: true, values,
+    return { ok: true, json: async () => ({ success: true, spreadsheetId: config.spreadsheetId, values,
       nextRow: body.startRow + count, lastRow: 3001, hasMore: body.startRow + count <= 3001 }) };
   };
   const tab = await readFacebookTab(config, 1497736270, scriptFetch);
@@ -142,6 +156,17 @@ test('mapping preserves source date and platform, normalizes phone and service',
   assert.equal(lead.facebookPlatform, 'ig');
   assert.equal(lead.justdialProduct, 'WhatsApp WABA');
   assert.match(lead.notes, /Asked for details/);
+});
+
+test('new Computer Repair tab maps its service question', () => {
+  const computerHeaders = headers.map(header => header === 'what_services_are_you_looking_for?'
+    ? 'what_service_do_you_require?' : header);
+  const tab = analyzeFacebookTab({ gid: 0, title: 'Computer Repair', values: [computerHeaders,
+    ['l:301', '2026-11-17T08:55:31-05:00', '', '', '', '', '', '', '', '', 'false', 'ig',
+      'data_recovery', 'Example Lead', 'p:+919000000003', '', 'Pune', 'CREATED']
+  ] });
+  assert.equal(tab.importable, true);
+  assert.equal(rowToLead(tab.headers, tab.rows[0].values, tab).service, 'data recovery');
 });
 
 test('sync imports both platforms once and preserves CRM status on repeat scans', async () => {
@@ -203,7 +228,7 @@ test('changed sheet headers stop the sync before any writes', async () => {
   await assert.rejects(processFacebookSheetLeads({ leads: {} }, { env, fetchImpl: badFetch }), /header layout/);
 });
 
-test('different Meta tab layouts map safely while non-sales and empty tabs stay read-only', () => {
+test('new Meta layouts map safely while historical tabs remain read-only', () => {
   const gpsHeader = [...headers.slice(0, 12), 'are_you_looking_to_buy_gps_tracking_device?', 'for_which_tracking_device_you_are_looking_to_buy?', 'full_name', 'phone_number', 'city', 'lead_status'];
   const gpsRow = [...rows[1].slice(0, 12), 'yes', 'four_wheeler_tracking_device', 'GPS customer', 'p:+919000000003', 'Pune', 'CREATED'];
   const gps = analyzeFacebookTab({ gid: 44413567, title: "GPS-Oct'26", values: [gpsHeader, gpsRow] });
@@ -211,11 +236,13 @@ test('different Meta tab layouts map safely while non-sales and empty tabs stay 
   assert.equal(rowToLead(gps.headers, gps.rows[0].values, gps).service, 'GPS Tracking');
   assert.equal(rowToLead(gps.headers, gps.rows[0].values, gps).name, 'GPS customer');
 
-  const headerless = analyzeFacebookTab({ gid: 1146694168, title: 'AI Kalyan', values: [rows[1].slice(0, 18)] });
-  assert.equal(headerless.importable, true);
-  assert.equal(headerless.rows[0].rowNumber, 1);
-
-  const job = analyzeFacebookTab({ gid: 1248816267, title: 'GPS Installation Job', values: [gpsHeader, gpsRow] });
-  assert.equal(job.importable, false);
+  const historical = analyzeFacebookTab({ gid: 1564797242, title: "GPS-Tracker(1-16th Nov'26)", values: [
+    ['Date', 'are_you_looking_to_buy_gps_tracking_device?', 'full_name', 'phone_number', 'city'],
+    ['11-16-26', 'yes', 'Example Lead', '919000000003', 'Pune']
+  ] });
+  assert.equal(historical.importable, false);
+  assert.equal(historical.headers[0], 'Date');
+  assert.equal(historical.rows.length, 1);
+  assert.equal(historical.rows[0].rowNumber, 2);
   assert.equal(analyzeFacebookTab({ gid: 2099327806, title: 'Sheet20', values: [] }).kind, 'empty');
 });

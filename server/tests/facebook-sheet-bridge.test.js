@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 test('Apps Script bridge authorizes reads, lists visible tabs and pages rows', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'googleAppsScriptFacebookLeads.gs'), 'utf8');
+  const spreadsheetId = '16wyHLQBQcCqPTKKM3snje5xrAZqM4MF1vekrmzu9-VE';
   let workbookOpens = 0;
   let lastRowReads = 0;
   const sheet = {
@@ -26,16 +27,18 @@ test('Apps Script bridge authorizes reads, lists visible tabs and pages rows', (
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: text => ({ text, setMimeType() { return this; } }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'test-facebook-script-secret-at-least-32-characters' }) },
     SpreadsheetApp: { openById: id => {
-      assert.equal(id, '1S-ZvDpj2LSc6-z4Cs35PDzDDmsj-Ht_txQCOCOMeubs');
+      assert.equal(id, spreadsheetId);
       workbookOpens += 1;
       return { getSheets: () => [sheet, hidden], getSheetById: gid => gid === 1497736270 ? sheet : null };
     } }
   };
   vm.runInNewContext(source, context, { filename: 'googleAppsScriptFacebookLeads.gs' });
-  const invoke = body => JSON.parse(context.doPost({ postData: { contents: JSON.stringify(body) } }).text);
+  const invoke = body => JSON.parse(context.doPost({ postData: { contents: JSON.stringify({ spreadsheetId, ...body }) } }).text);
   assert.equal(invoke({ action: 'listTabs', secret: 'wrong' }).error, 'Unauthorized.');
   assert.equal(workbookOpens, 0);
   const secret = 'test-facebook-script-secret-at-least-32-characters';
+  assert.match(invoke({ action: 'listTabs', secret, spreadsheetId: 'retired-workbook' }).error, /does not match/);
+  assert.equal(workbookOpens, 0);
   const tabs = invoke({ action: 'listTabs', secret }).tabs;
   assert.equal(tabs.length, 1);
   assert.equal(tabs[0].maxPageSize, 1000);

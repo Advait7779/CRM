@@ -1,7 +1,7 @@
 // Deploy as a separate Apps Script web app: Execute as me, access Anyone.
 // Set FACEBOOK_SHEET_READ_SECRET (32+ random characters) in Script Properties.
 // The workbook stays private; only callers with the secret can read its tabs.
-const FACEBOOK_SPREADSHEET_ID = '1S-ZvDpj2LSc6-z4Cs35PDzDDmsj-Ht_txQCOCOMeubs';
+const FACEBOOK_SPREADSHEET_ID = '16wyHLQBQcCqPTKKM3snje5xrAZqM4MF1vekrmzu9-VE';
 
 function facebookJson_(body) {
   return ContentService.createTextOutput(JSON.stringify(body))
@@ -17,6 +17,9 @@ function doPost(e) {
   if (!secret || secret.length < 32 || request.secret !== secret) {
     return facebookJson_({ success: false, error: 'Unauthorized.' });
   }
+  if (request.spreadsheetId !== FACEBOOK_SPREADSHEET_ID) {
+    return facebookJson_({ success: false, error: 'Spreadsheet configuration does not match this reader.' });
+  }
 
   try {
     const workbook = SpreadsheetApp.openById(FACEBOOK_SPREADSHEET_ID);
@@ -25,7 +28,7 @@ function doPost(e) {
         gid: sheet.getSheetId(), title: sheet.getName(), index: sheet.getIndex() - 1,
         maxPageSize: 1000
       }));
-      return facebookJson_({ success: true, tabs });
+      return facebookJson_({ success: true, spreadsheetId: FACEBOOK_SPREADSHEET_ID, tabs });
     }
 
     if (request.action === 'readTab') {
@@ -45,7 +48,7 @@ function doPost(e) {
       const count = Math.min(limit, Math.max(0, lastRow - startRow + 1));
       const values = count && width ? sheet.getRange(startRow, 1, count, width).getDisplayValues() : [];
       const nextRow = startRow + values.length;
-      return facebookJson_({ success: true, values, nextRow, lastRow, hasMore: nextRow <= lastRow });
+      return facebookJson_({ success: true, spreadsheetId: FACEBOOK_SPREADSHEET_ID, values, nextRow, lastRow, hasMore: nextRow <= lastRow });
     }
     return facebookJson_({ success: false, error: 'Unknown action.' });
   } catch {

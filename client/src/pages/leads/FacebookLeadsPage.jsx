@@ -27,7 +27,7 @@ const STATUS_COLOR = {
 const connectionErrorMessage = error => error?.message === 'API endpoint not found.'
   ? 'The Facebook Leads API is not deployed on the CRM server yet. Redeploy the server from the latest main branch.'
   : error?.message || 'Could not reach the CRM server.'
-const tabStorageKey = userId => `facebook-sheet-tabs:${userId}`
+const tabStorageKey = userId => `facebook-sheet-tabs:v2:${userId}`
 const savedTabs = userId => {
   if (!userId) return null
   try {
