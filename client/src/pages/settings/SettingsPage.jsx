@@ -85,10 +85,7 @@ export default function SettingsPage() {
     if (sendingSms) return
     setSendingSms(true)
     try {
-      const preview = smsMode === 'all'
-        ? await apiPost('/gps-renewals/sms/preview', { mode: 'all' })
-        : smsPreview
-      if (!preview) return
+      const preview = await apiPost('/gps-renewals/sms/preview', { mode: smsMode, from: smsFrom, to: smsTo })
       setSmsPreview(preview)
       if (preview.configuration !== 'enabled') return toast.error('Save a valid GPS renewal SMS URL first.')
       if (!preview.eligible) return toast('No eligible vehicles to message.', { icon: 'ℹ️' })
@@ -267,7 +264,7 @@ export default function SettingsPage() {
         <section className="glass-card" style={{ padding: 28, marginTop: 36 }}>
           <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>GPS Renewal SMS</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>
-            Select All and click Send, or preview a date range before sending. Saving the URL or importing Excel does not send SMS. Each vehicle and expiry date receives at most one successful SMS; confirmed renewals and rows without a customer mobile number are skipped.
+            Choose a month or date range, or select All expiry dates. The separate Send SMS button sends only after you confirm the recipient count. Selecting All, saving the URL, and importing Excel do not send SMS. Each vehicle and expiry date receives at most one successful SMS; confirmed renewals and rows without a customer mobile number are skipped.
           </p>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'end', marginBottom: 18 }}>
             <div className="form-group" style={{ minWidth: 170 }}>
@@ -288,11 +285,6 @@ export default function SettingsPage() {
               <input type="checkbox" checked={smsMode === 'all'} onChange={e => { setSmsMode(e.target.checked ? 'all' : 'range'); setSmsPreview(null) }} />
               All expiry dates
             </label>
-            {smsMode === 'all' && <button type="button" className="btn-primary" onClick={sendSms}
-              disabled={sendingSms || previewingSms || !savedSmsUrl.trim() || savedSmsUrl.trim() !== form.gps_renewal_expired_sms_webhook_url.trim()}
-              title={!savedSmsUrl.trim() ? 'Save the GPS renewal SMS URL first' : 'Check eligible vehicles and send SMS for all expiry dates'}>
-              {sendingSms ? 'Checking and sending…' : 'Send SMS for All'}
-            </button>}
           </div>
           <div className="form-group">
             <label className="form-label">GPS renewal SMS URL</label>
@@ -311,10 +303,13 @@ export default function SettingsPage() {
             <button type="button" className="btn-secondary" disabled={previewingSms || sendingSms || smsMode === 'range' && (!smsFrom || !smsTo)} onClick={previewSmsRecipients}>
               {previewingSms ? 'Checking…' : 'Preview SMS recipients'}
             </button>
-            {smsMode === 'range' && smsPreview && <button type="button" className="btn-primary" disabled={sendingSms || !smsPreview.eligible || smsPreview.configuration !== 'enabled'
-              || savedSmsUrl.trim() !== form.gps_renewal_expired_sms_webhook_url.trim()} onClick={sendSms}>
-              {sendingSms ? 'Queuing…' : `Send SMS to ${smsPreview.eligible} vehicle${smsPreview.eligible === 1 ? '' : 's'}`}
-            </button>}
+            <button type="button" className="btn-primary" onClick={sendSms}
+              disabled={sendingSms || previewingSms || !savedSmsUrl.trim()
+                || savedSmsUrl.trim() !== form.gps_renewal_expired_sms_webhook_url.trim()
+                || smsMode === 'range' && (!smsFrom || !smsTo)}
+              title={!savedSmsUrl.trim() ? 'Save the GPS renewal SMS URL first' : 'Send SMS for the selected expiry dates'}>
+              {sendingSms ? 'Checking and sending…' : 'Send SMS'}
+            </button>
           </div>
           {smsPreview && <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-secondary)' }}>
             <strong>{smsPreview.eligible} eligible vehicle{smsPreview.eligible === 1 ? '' : 's'}</strong> · {smsPreview.duplicates} duplicate row{smsPreview.duplicates === 1 ? '' : 's'} skipped · {smsPreview.alreadySent} already sent · {smsPreview.pending} in progress · {smsPreview.confirmed} confirmed · {smsPreview.missingMobile} without a customer mobile number
