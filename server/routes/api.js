@@ -11,13 +11,13 @@ const { currentDateOnly, jsonReplacer, prepareData, prismaId, toDateOnly } = req
 const { authMiddleware, checkRole } = require('../middleware/auth');
 const { sendMultiChannelNotification } = require('../services/notificationService');
 const { ALL_WEBHOOK_SETTING_KEYS, GPS_RENEWAL_SMS_SETTING_KEY, sendSavedWebhookNotifications } = require('../services/savedWebhookNotifications');
-const { mobileFromContact, eligibleForExpiredSms, sendGpsRenewalSms } = require('../services/gpsRenewalSms');
+const { mobileFromContact, smsRecipientsForFilter, sendGpsRenewalSms } = require('../services/gpsRenewalSms');
 const { validDateOnly, buildGreeting, deliverGreeting } = require('../services/customerGreetings');
 const { isGroupMember, groupAccessWhere } = require('../utils/accessPolicy');
 const { JUSTDIAL_PRODUCTS, ASSIGNABLE_PRODUCTS, classifyJustdialCategory, validProductSelection, leadAccessWhere, canAccessLead } = require('../services/justdialProducts');
 const { LEAD_GROUPS, filterLeads, buildLeadsWorkbook } = require('../utils/leadWorkbook');
 const ExcelJS = require('exceljs');
-const { HEADERS: GPS_HEADERS, normalizeGpsRenewal, planGpsImport, parseGpsWorkbook } = require('../services/gpsRenewals');
+const { HEADERS: GPS_HEADERS, dateOnly, normalizeGpsRenewal, planGpsImport, parseGpsWorkbook } = require('../services/gpsRenewals');
 
 const router = express.Router();
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -904,15 +904,6 @@ router.post('/gps-renewals/import', authMiddleware, checkRole([...SALES, ...FINA
     const details = preview.errors.slice(0, 3).map(error => `row ${error.rowNumber}: ${error.message}`).join('; ');
     return res.status(400).json({ message: `Excel file has ${preview.errors.length} invalid row(s): ${details}${preview.errors.length > 3 ? '; and more' : ''}` });
   }
-  const smsSetting = await prisma.appSettings.findUnique({ where: { key: GPS_RENEWAL_SMS_SETTING_KEY } });
-  const smsTemplate = String(smsSetting?.value || '').trim();
-  let smsConfiguration = smsTemplate ? 'enabled' : 'not_configured';
-  if (smsTemplate) {
-    try {
-      const url = new URL(smsTemplate);
-      if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Invalid protocol');
-    } catch { smsConfiguration = 'invalid_url'; }
-  }
   const result = await serializableTransaction(async (tx) => {
     const plan = planGpsImport(preview.rows, await gpsExistingForRows(tx.renewals, preview.rows));
     if (plan.create.length) await tx.renewals.createMany({
@@ -922,61 +913,100 @@ router.post('/gps-renewals/import', authMiddleware, checkRole([...SALES, ...FINA
     for (const { row, record } of updates) {
       await tx.renewals.update({ where: { id: record.id }, data: prepareData('renewals', { simNumber: row.simNumber }) });
     }
-    let smsClaims = [];
-    let smsClaimId = null;
-    if (smsConfiguration === 'enabled' && preview.rows.length) {
-      // Re-match after insertion so reuploads can notify eligible rows that were imported before the URL was set.
-      const matched = planGpsImport(preview.rows, await gpsExistingForRows(tx.renewals, preview.rows)).matched;
-      const today = currentDateOnly();
-      const ids = [...new Set(matched.filter(({ record }) => eligibleForExpiredSms(record, today)).map(({ record }) => record.id))];
-      if (ids.length) {
-        smsClaimId = crypto.randomUUID();
-        const now = new Date();
-        await tx.renewals.updateMany({
-          where: {
-            id: { in: ids }, confirmedAt: null, renewalDate: null, nextDue: { lt: toDateOnly(today) },
-            OR: [
-              { expiredSmsStatus: null },
-              { expiredSmsStatus: 'failed' },
-              { expiredSmsStatus: 'pending', expiredSmsClaimedAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } }
-            ]
-          },
-          data: { expiredSmsStatus: 'pending', expiredSmsClaimId: smsClaimId, expiredSmsClaimedAt: now }
-        });
-        smsClaims = await tx.renewals.findMany({ where: { expiredSmsClaimId: smsClaimId },
-          select: { id: true, customer: true, contactNo: true, imeiNo: true, vehicleNumber: true, nextDue: true } });
-      }
-    }
     return {
       imported: plan.create.length,
       updated: updates.length,
       skipped: plan.matched.length - updates.length,
-      warnings: preview.warnings,
-      missingContactCount: preview.rows.filter(row => !mobileFromContact(row.contactNo)).length,
-      smsClaims,
-      smsClaimId
+      warnings: preview.warnings
     };
   }, 3, 120000);
   await audit(req, 'import', 'gps-renewal', null, { count: result.imported, updated: result.updated, skipped: result.skipped });
-  const { smsClaims, smsClaimId, ...publicResult } = result;
-  res.json({ ...publicResult, smsConfiguration, smsQueued: smsClaims.length });
-  if (smsClaims.length) setImmediate(async () => {
-    for (let index = 0; index < smsClaims.length; index += 5) {
-      await Promise.all(smsClaims.slice(index, index + 5).map(async record => {
+  res.json(result);
+}));
+
+function gpsSmsFilter(payload) {
+  const mode = String(payload?.mode || '');
+  if (mode === 'all') return { mode };
+  const from = String(payload?.from || '');
+  const to = String(payload?.to || '');
+  if (mode !== 'range' || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)
+    || dateOnly(from) !== from || dateOnly(to) !== to || from > to) {
+    const error = new Error('Choose a valid From and To expiry date, or select All.');
+    error.status = 400;
+    throw error;
+  }
+  return { mode, from, to };
+}
+
+async function gpsSmsCandidates(delegate) {
+  return delegate.findMany({ where: gpsRenewalWhere,
+    select: { id: true, customer: true, contactNo: true, imeiNo: true, vehicleNumber: true, nextDue: true,
+      renewalDate: true, confirmedAt: true, expiredSmsStatus: true, expiredSmsClaimedAt: true } });
+}
+
+async function gpsSmsTemplate() {
+  const setting = await prisma.appSettings.findUnique({ where: { key: GPS_RENEWAL_SMS_SETTING_KEY } });
+  const template = String(setting?.value || '').trim();
+  if (!template) return { configuration: 'not_configured', template };
+  try {
+    const url = new URL(template);
+    if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Invalid protocol');
+    return { configuration: 'enabled', template };
+  } catch { return { configuration: 'invalid_url', template: '' }; }
+}
+
+router.post('/gps-renewals/sms/preview', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
+  const filter = gpsSmsFilter(req.body);
+  const { recipients, summary } = smsRecipientsForFilter(await gpsSmsCandidates(prisma.renewals), filter);
+  const { configuration } = await gpsSmsTemplate();
+  res.json({ ...summary, eligible: recipients.length, recipientIds: recipients.map(row => row.id), configuration,
+    sample: recipients.slice(0, 10).map(row => ({ customer: row.customer, vehicle: row.vehicleNumber,
+      expiryDate: dateOnly(row.nextDue), phoneEnding: mobileFromContact(row.contactNo).slice(-4) })) });
+}));
+
+router.post('/gps-renewals/sms/send', authMiddleware, checkRole(ADMIN), asyncHandler(async (req, res) => {
+  const filter = gpsSmsFilter(req.body);
+  const recipientIds = req.body?.recipientIds;
+  if (!Array.isArray(recipientIds) || recipientIds.length > 2000
+    || recipientIds.some(id => !Number.isSafeInteger(id) || id < 1)
+    || new Set(recipientIds).size !== recipientIds.length) {
+    return res.status(400).json({ message: 'Preview the recipients again before sending.' });
+  }
+  const { configuration, template } = await gpsSmsTemplate();
+  if (configuration !== 'enabled') return res.status(400).json({ message: 'Save a valid GPS renewal SMS URL in Settings before sending.' });
+  const claimId = crypto.randomUUID();
+  const claimed = await serializableTransaction(async tx => {
+    const { recipients } = smsRecipientsForFilter(await gpsSmsCandidates(tx.renewals), filter);
+    const approved = new Set(recipientIds);
+    const now = new Date();
+    const ids = recipients.filter(record => approved.has(record.id)).map(record => record.id);
+    if (!ids.length) return [];
+    await tx.renewals.updateMany({
+      where: { id: { in: ids }, confirmedAt: null, renewalDate: null,
+        OR: [{ expiredSmsStatus: null }, { expiredSmsStatus: 'failed' },
+          { expiredSmsStatus: 'pending', expiredSmsClaimedAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } }] },
+      data: { expiredSmsStatus: 'pending', expiredSmsClaimId: claimId, expiredSmsClaimedAt: now }
+    });
+    return tx.renewals.findMany({ where: { expiredSmsClaimId: claimId }, orderBy: { id: 'asc' },
+      select: { id: true, customer: true, contactNo: true, imeiNo: true, vehicleNumber: true, nextDue: true } });
+  }, 3, 120000);
+  await audit(req, 'send', 'gps-renewal-sms', null, { mode: filter.mode, from: filter.from, to: filter.to, queued: claimed.length });
+  res.json({ queued: claimed.length });
+  if (claimed.length) setImmediate(async () => {
+    for (let index = 0; index < claimed.length; index += 5) {
+      await Promise.all(claimed.slice(index, index + 5).map(async record => {
         let sent = false;
         let skipped = false;
         try {
           const current = await prisma.renewals.findUnique({ where: { id: record.id },
             select: { expiredSmsClaimId: true, confirmedAt: true, renewalDate: true } });
-          if (!current || current.expiredSmsClaimId !== smsClaimId || current.confirmedAt || current.renewalDate) skipped = true;
-          else { await sendGpsRenewalSms(smsTemplate, record); sent = true; }
-        }
-        catch (error) { console.error(`GPS renewal SMS ${record.id} failed: ${error.message}`); }
+          if (!current || current.expiredSmsClaimId !== claimId || current.confirmedAt || current.renewalDate) skipped = true;
+          else { await sendGpsRenewalSms(template, record); sent = true; }
+        } catch (error) { console.error(`GPS renewal SMS ${record.id} failed: ${error.message}`); }
         try {
-          await prisma.renewals.updateMany({
-            where: { id: record.id, expiredSmsClaimId: smsClaimId },
-            data: { expiredSmsStatus: skipped ? null : sent ? 'sent' : 'failed', expiredSmsSentAt: sent ? new Date() : null, expiredSmsClaimId: null }
-          });
+          await prisma.renewals.updateMany({ where: { id: record.id, expiredSmsClaimId: claimId },
+            data: { expiredSmsStatus: skipped ? null : sent ? 'sent' : 'failed', expiredSmsSentAt: sent ? new Date() : null,
+              expiredSmsClaimId: null, expiredSmsClaimedAt: null } });
         } catch (error) { console.error(`GPS renewal SMS ${record.id} status update failed: ${error.message}`); }
       }));
     }

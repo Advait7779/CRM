@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { MessageSquare, Phone, PhoneCall, Save, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
-import { apiGet, apiPut } from '../../utils/api'
+import { apiGet, apiPost, apiPut } from '../../utils/api'
 
 const CUSTOMER_SETTING_KEYS = ['sms_webhook_url', 'whatsapp_webhook_url', 'rcs_webhook_url', 'voice_call_webhook_url']
 const JUSTDIAL_GROUPS = [
@@ -39,13 +39,21 @@ export default function SettingsPage() {
   const [form, setForm] = useState(emptySettings)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [savedSmsUrl, setSavedSmsUrl] = useState('')
+  const [smsMode, setSmsMode] = useState('range')
+  const [smsFrom, setSmsFrom] = useState('')
+  const [smsTo, setSmsTo] = useState('')
+  const [smsMonth, setSmsMonth] = useState('')
+  const [smsPreview, setSmsPreview] = useState(null)
+  const [previewingSms, setPreviewingSms] = useState(false)
+  const [sendingSms, setSendingSms] = useState(false)
 
   const isAdmin = ['super_admin', 'director'].includes(user?.role)
 
   useEffect(() => {
     if (!isAdmin) { setLoading(false); return }
     apiGet('/settings')
-      .then(data => setForm(readSettings(data)))
+      .then(data => { setForm(readSettings(data)); setSavedSmsUrl(data?.gps_renewal_expired_sms_webhook_url || '') })
       .catch(error => toast.error(error.message))
       .finally(() => setLoading(false))
   }, [isAdmin])
@@ -56,9 +64,46 @@ export default function SettingsPage() {
     try {
       const updated = await apiPut('/settings', form)
       setForm(readSettings(updated))
+      setSavedSmsUrl(updated.gps_renewal_expired_sms_webhook_url || '')
+      setSmsPreview(null)
       toast.success('Settings saved successfully')
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
+  }
+
+  const previewSmsRecipients = async () => {
+    setPreviewingSms(true)
+    setSmsPreview(null)
+    try {
+      const result = await apiPost('/gps-renewals/sms/preview', { mode: smsMode, from: smsFrom, to: smsTo })
+      setSmsPreview(result)
+    } catch (error) { toast.error(error.message) }
+    finally { setPreviewingSms(false) }
+  }
+
+  const sendSms = async () => {
+    const scope = smsMode === 'all' ? 'all expiry dates, including future dates' : `${smsFrom} through ${smsTo}`
+    if (!smsPreview?.eligible || !window.confirm(`Send GPS renewal SMS to ${smsPreview.eligible} vehicle${smsPreview.eligible === 1 ? '' : 's'} for ${scope}?`)) return
+    setSendingSms(true)
+    try {
+      const result = await apiPost('/gps-renewals/sms/send', {
+        mode: smsMode, from: smsFrom, to: smsTo, recipientIds: smsPreview.recipientIds
+      })
+      toast.success(`${result.queued} GPS renewal SMS request${result.queued === 1 ? '' : 's'} queued.`)
+      setSmsPreview(null)
+    } catch (error) { toast.error(error.message) }
+    finally { setSendingSms(false) }
+  }
+
+  const chooseSmsMonth = value => {
+    setSmsMonth(value)
+    setSmsMode('range')
+    setSmsPreview(null)
+    if (value) {
+      const [year, month] = value.split('-').map(Number)
+      setSmsFrom(`${value}-01`)
+      setSmsTo(`${value}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`)
+    }
   }
 
   if (!isAdmin) {
@@ -212,23 +257,57 @@ export default function SettingsPage() {
         </div>
 
         <section className="glass-card" style={{ padding: 28, marginTop: 36 }}>
-          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>Expired GPS Renewal SMS</h2>
+          <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>GPS Renewal SMS</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>
-            After an Excel import, send an SMS for each expired, unconfirmed GPS renewal with a valid mobile number. Successful requests are not repeated on later uploads. Each renewal row sends separately, so one customer may receive messages for multiple devices. Leave this URL blank to disable sending.
+            Select an expiry date range or All, preview the vehicles, then send. Saving the URL or importing Excel does not send SMS. Each vehicle and expiry date receives at most one successful SMS; confirmed renewals and rows without a customer mobile number are skipped.
           </p>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'end', marginBottom: 18 }}>
+            <div className="form-group" style={{ minWidth: 170 }}>
+              <label className="form-label" htmlFor="gps-sms-month">Choose month</label>
+              <input id="gps-sms-month" type="month" className="input-field" value={smsMonth} onChange={e => chooseSmsMonth(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ minWidth: 170 }}>
+              <label className="form-label" htmlFor="gps-sms-from">From expiry date</label>
+              <input id="gps-sms-from" type="date" className="input-field" value={smsFrom} disabled={smsMode === 'all'}
+                onChange={e => { setSmsFrom(e.target.value); setSmsMonth(''); setSmsPreview(null) }} />
+            </div>
+            <div className="form-group" style={{ minWidth: 170 }}>
+              <label className="form-label" htmlFor="gps-sms-to">To expiry date</label>
+              <input id="gps-sms-to" type="date" className="input-field" value={smsTo} disabled={smsMode === 'all'}
+                onChange={e => { setSmsTo(e.target.value); setSmsMonth(''); setSmsPreview(null) }} />
+            </div>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 42, cursor: 'pointer' }}>
+              <input type="checkbox" checked={smsMode === 'all'} onChange={e => { setSmsMode(e.target.checked ? 'all' : 'range'); setSmsPreview(null) }} />
+              All expiry dates
+            </label>
+          </div>
           <div className="form-group">
-            <label className="form-label">Expired renewal SMS URL</label>
+            <label className="form-label">GPS renewal SMS URL</label>
             <textarea
               className="input-field"
               value={form.gps_renewal_expired_sms_webhook_url}
-              onChange={e => setForm(current => ({ ...current, gps_renewal_expired_sms_webhook_url: e.target.value }))}
+              onChange={e => { setForm(current => ({ ...current, gps_renewal_expired_sms_webhook_url: e.target.value })); setSmsPreview(null) }}
               placeholder="https://provider.example/send-sms?number={phone}&sms=...&templateid=..."
               style={{ minHeight: 92, fontSize: 12, fontFamily: 'monospace', resize: 'vertical', lineHeight: 1.5 }}
             />
             <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
-              Use {'{phone}'} for the recipient. In the sms, message, or msg text, you can use {'{name}'}, {'{imei}'}, {'{vehicle}'}, and {'{expiry_date}'}. Reimport the workbook after saving this URL to send for previously imported expired renewals.
+              Use {'{phone}'} for the recipient. In the SMS text, you can use {'{name}'}, {'{imei}'}, {'{vehicle}'}, and {'{expiry_date}'}. Save Settings before previewing and sending.
             </p>
           </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 18 }}>
+            <button type="button" className="btn-secondary" disabled={previewingSms || sendingSms || smsMode === 'range' && (!smsFrom || !smsTo)} onClick={previewSmsRecipients}>
+              {previewingSms ? 'Checking…' : 'Preview SMS recipients'}
+            </button>
+            {smsPreview && <button type="button" className="btn-primary" disabled={sendingSms || !smsPreview.eligible || smsPreview.configuration !== 'enabled'
+              || savedSmsUrl.trim() !== form.gps_renewal_expired_sms_webhook_url.trim()} onClick={sendSms}>
+              {sendingSms ? 'Queuing…' : `Send SMS to ${smsPreview.eligible} vehicle${smsPreview.eligible === 1 ? '' : 's'}`}
+            </button>}
+          </div>
+          {smsPreview && <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-secondary)' }}>
+            <strong>{smsPreview.eligible} eligible vehicle{smsPreview.eligible === 1 ? '' : 's'}</strong> · {smsPreview.duplicates} duplicate row{smsPreview.duplicates === 1 ? '' : 's'} skipped · {smsPreview.alreadySent} already sent · {smsPreview.pending} in progress · {smsPreview.confirmed} confirmed · {smsPreview.missingMobile} without a customer mobile number
+            {smsPreview.configuration !== 'enabled' && <p style={{ color: '#b45309', marginTop: 8 }}>Save a valid GPS renewal SMS URL before sending.</p>}
+            {smsPreview.sample?.length > 0 && <div style={{ marginTop: 10 }}>First recipients: {smsPreview.sample.map(row => `${row.customer} (${row.vehicle}, ${row.expiryDate}, ending ${row.phoneEnding})`).join(' · ')}</div>}
+          </div>}
         </section>
 
         <section style={{ marginTop: 36 }}>
