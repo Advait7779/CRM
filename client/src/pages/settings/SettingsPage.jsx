@@ -296,7 +296,7 @@ export default function SettingsPage() {
               style={{ minHeight: 92, fontSize: 12, fontFamily: 'monospace', resize: 'vertical', lineHeight: 1.5 }}
             />
             <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
-              Use {'{phone}'} for the recipient. In the SMS text, you can use {'{name}'}, {'{imei}'}, {'{vehicle}'}, and {'{expiry_date}'}. Save Settings before previewing and sending.
+              Use {'{phone}'} for the recipient. In the SMS text, the first [alp] becomes the customer name and the second [alp] becomes the vehicle number. You can also use {'{name}'}, {'{imei}'}, {'{vehicle}'}, and {'{expiry_date}'}. Save Settings before previewing and sending.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 18 }}>

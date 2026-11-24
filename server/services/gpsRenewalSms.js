@@ -63,9 +63,12 @@ function renewalSmsUrl(template, record) {
   };
   for (const key of ['sms', 'message', 'msg']) {
     if (!url.searchParams.has(key)) continue;
-    const message = url.searchParams.get(key).replace(/\{(name|imei|vehicle|expiry_date)\}|\[alp\]/gi, (match, token) =>
-      replacements[(token || 'name').toLowerCase()] ?? match
-    );
+    let alpIndex = 0;
+    const message = url.searchParams.get(key).replace(/\{(name|imei|vehicle|expiry_date)\}|\[alp\]/gi, (match, token) => {
+      if (token) return replacements[token.toLowerCase()] ?? match;
+      alpIndex += 1;
+      return alpIndex === 1 ? replacements.name : alpIndex === 2 ? replacements.vehicle : match;
+    });
     url.searchParams.set(key, message);
   }
   return url.toString();

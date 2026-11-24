@@ -50,6 +50,14 @@ test('GPS SMS substitutes the phone and message fields without changing the temp
   assert.equal(url.searchParams.get('templateid'), '123');
 });
 
+test('renewal SMS maps the first [alp] to customer and the second to vehicle', () => {
+  const template = 'https://provider.example/send?number=9876543210&sms=Dear+%5Balp%5D%2C+tracking+for+%5Balp%5D+has+expired.&templateid=456';
+  const url = new URL(renewalSmsUrl(template, record));
+  assert.equal(url.searchParams.get('number'), '9049456804');
+  assert.equal(url.searchParams.get('sms'), 'Dear Om sai sales, tracking for MH12PQ5657 has expired.');
+  assert.equal(url.searchParams.get('templateid'), '456');
+});
+
 test('GPS SMS treats a provider rejection as failed', async () => {
   const template = 'https://provider.example/send?number={phone}&sms=Reminder';
   await assert.rejects(sendGpsRenewalSms(template, record, async () => ({ ok: true, status: 200, text: async () => 'Unauthorized' })), /rejected/);
