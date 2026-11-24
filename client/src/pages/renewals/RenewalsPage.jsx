@@ -6,12 +6,13 @@ import ModalBackdrop from '../../components/ModalBackdrop'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
+import { localDateString } from '../../utils/date'
 
 const emptyForm = { customer: '', contactNo: '', imeiNo: '', simNumber: '', vehicleNumber: '', nextDue: '', renewalDate: '', followUpDate: '', remarks: '' }
 const fields = [['customer', 'Customer name'], ['contactNo', 'Contact No'], ['imeiNo', 'IMEI No'], ['simNumber', 'SIM Number'], ['vehicleNumber', 'Vehicle Number'], ['nextDue', 'Expiry date'], ['renewalDate', 'Renewal date']]
 const dateValue = value => value ? String(value).slice(0, 10) : ''
 const dateText = value => value ? new Date(`${dateValue(value)}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const todayStr = () => new Date().toISOString().slice(0, 10)
+const todayStr = () => localDateString()
 const getOffsetDate = days => {
   const d = new Date()
   d.setDate(d.getDate() + days)
@@ -347,11 +348,11 @@ export default function RenewalsPage() {
               </button>
               <button type="button" title="Edit renewal" aria-label="Edit renewal" style={iconButton('#6366f1', 'rgba(99,102,241,.12)')} onClick={() => openForm(row)}><Pencil size={15} /></button>
               {canSendSms && <button type="button"
-                title={row.expiredSmsStatus === 'sent' ? 'SMS already sent for this renewal' : smsInProgress(row) ? 'SMS is being sent' : row.confirmedAt || row.renewalDate ? 'Confirmed renewals do not receive SMS' : 'Send renewal SMS to this customer'}
+                title={row.expiredSmsStatus === 'sent' ? 'SMS already sent for this renewal' : dateValue(row.nextDue) >= today ? 'SMS can be sent only after the expiry date' : smsInProgress(row) ? 'SMS is being sent' : row.confirmedAt || row.renewalDate ? 'Confirmed renewals do not receive SMS' : 'Send renewal SMS to this customer'}
                 aria-label={`Send renewal SMS to ${row.customer} for ${row.vehicleNumber}`}
-                disabled={sendingSmsId !== null || Boolean(row.confirmedAt || row.renewalDate) || row.expiredSmsStatus === 'sent' || smsInProgress(row)}
+                disabled={sendingSmsId !== null || Boolean(row.confirmedAt || row.renewalDate) || dateValue(row.nextDue) >= today || row.expiredSmsStatus === 'sent' || smsInProgress(row)}
                 style={{ ...iconButton('#2563eb', 'rgba(37,99,235,.10)'), width: 'auto', padding: '0 8px', gap: 5,
-                  opacity: sendingSmsId !== null || row.confirmedAt || row.renewalDate || row.expiredSmsStatus === 'sent' || smsInProgress(row) ? 0.5 : 1 }}
+                  opacity: sendingSmsId !== null || row.confirmedAt || row.renewalDate || dateValue(row.nextDue) >= today || row.expiredSmsStatus === 'sent' || smsInProgress(row) ? 0.5 : 1 }}
                 onClick={() => sendRowSms(row)}><MessageSquare size={14} /> {row.expiredSmsStatus === 'sent' ? 'Sent' : 'SMS'}</button>}
               <button type="button" title="Delete renewal" aria-label="Delete renewal" style={iconButton('#ef4444', 'rgba(239,68,68,.10)')} onClick={() => setConfirm({ action: 'delete', renewal: row })}><Trash2 size={15} /></button>
             </div></td>

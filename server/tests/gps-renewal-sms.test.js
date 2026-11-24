@@ -22,25 +22,33 @@ test('GPS SMS uses the customer mobile and only expired unconfirmed records', ()
   assert.equal(mobileFromContact('9049456804(H)'), '');
   assert.equal(eligibleForExpiredSms(record, '2026-10-24'), true);
   assert.equal(eligibleForExpiredSms({ ...record, nextDue: new Date('2026-10-24T00:00:00Z') }, '2026-10-24'), false);
+  assert.equal(eligibleForExpiredSms({ ...record, nextDue: new Date('2026-10-28T00:00:00Z') }, '2026-10-24'), false);
   assert.equal(eligibleForExpiredSms({ ...record, renewalDate: new Date() }, '2026-10-24'), false);
   assert.equal(eligibleForExpiredSms({ ...record, confirmedAt: new Date() }, '2026-10-24'), false);
 });
 
-test('SMS preview selects one customer number per vehicle and expiry date, including future months', () => {
+test('SMS preview selects one customer number per expired vehicle and excludes future dates', () => {
+  const now = new Date('2026-11-24T08:00:00Z');
   const rows = [
     record,
     { ...record, id: 2, vehicleNumber: 'MH 12 PQ 5657', contactNo: '8282982829(H)' },
-    { ...record, id: 3, vehicleNumber: 'MH12PQ5658', nextDue: new Date('2026-12-10T00:00:00Z') },
+    { ...record, id: 3, vehicleNumber: 'MH12PQ5658', nextDue: new Date('2026-11-28T00:00:00Z') },
     { ...record, id: 4, vehicleNumber: 'MH12PQ5659', contactNo: '8282982829(H)' },
     { ...record, id: 5, vehicleNumber: 'MH12PQ5660', expiredSmsStatus: 'sent' },
     { ...record, id: 6, vehicleNumber: 'MH12PQ5661', confirmedAt: new Date() }
   ];
-  const august = smsRecipientsForFilter(rows, { mode: 'range', from: '2026-08-01', to: '2026-08-31' });
+  const august = smsRecipientsForFilter(rows, { mode: 'range', from: '2026-08-01', to: '2026-08-31' }, now);
   assert.deepEqual(august.recipients.map(row => row.id), [1]);
-  assert.deepEqual(august.summary, { matchedVehicles: 4, duplicates: 1, alreadySent: 1, pending: 0, confirmed: 1, missingMobile: 1 });
-  const future = smsRecipientsForFilter(rows, { mode: 'range', from: '2026-12-01', to: '2026-12-31' });
-  assert.deepEqual(future.recipients.map(row => row.id), [3]);
-  assert.deepEqual(smsRecipientsForFilter(rows, { mode: 'all' }).recipients.map(row => row.id), [1, 3]);
+  assert.deepEqual(august.summary, { matchedVehicles: 4, duplicates: 1, notExpired: 0, alreadySent: 1, pending: 0, confirmed: 1, missingMobile: 1 });
+  const future = smsRecipientsForFilter(rows, { mode: 'range', from: '2026-11-28', to: '2026-11-28' }, now);
+  assert.deepEqual(future.recipients.map(row => row.id), []);
+  assert.equal(future.summary.notExpired, 1);
+  const today = smsRecipientsForFilter([{ ...record, id: 7, nextDue: new Date('2026-11-24T00:00:00Z') }], { mode: 'all' }, now);
+  assert.deepEqual(today.recipients, []);
+  assert.equal(today.summary.notExpired, 1);
+  const all = smsRecipientsForFilter(rows, { mode: 'all' }, now);
+  assert.deepEqual(all.recipients.map(row => row.id), [1]);
+  assert.equal(all.summary.notExpired, 1);
 });
 
 test('GPS SMS substitutes the phone and message fields without changing the template ID', () => {

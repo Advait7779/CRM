@@ -967,8 +967,9 @@ function queueGpsSmsClaims(claimed, claimId, template) {
         let skipped = false;
         try {
           const current = await prisma.renewals.findUnique({ where: { id: record.id },
-            select: { expiredSmsClaimId: true, confirmedAt: true, renewalDate: true } });
-          if (!current || current.expiredSmsClaimId !== claimId || current.confirmedAt || current.renewalDate) skipped = true;
+            select: { expiredSmsClaimId: true, confirmedAt: true, renewalDate: true, nextDue: true } });
+          if (!current || current.expiredSmsClaimId !== claimId || current.confirmedAt || current.renewalDate
+            || dateOnly(current.nextDue) >= currentDateOnly()) skipped = true;
           else { await sendGpsRenewalSms(template, record); sent = true; }
         } catch (error) { console.error(`GPS renewal SMS ${record.id} failed: ${error.message}`); }
         try {
@@ -1009,6 +1010,7 @@ router.post('/gps-renewals/sms/send', authMiddleware, checkRole(ADMIN), asyncHan
     if (!ids.length) return [];
     await tx.renewals.updateMany({
       where: { id: { in: ids }, confirmedAt: null, renewalDate: null,
+        nextDue: { lt: toDateOnly(currentDateOnly(now)) },
         OR: [{ expiredSmsStatus: null }, { expiredSmsStatus: 'failed' },
           { expiredSmsStatus: 'pending', expiredSmsClaimedAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } }] },
       data: { expiredSmsStatus: 'pending', expiredSmsClaimId: claimId, expiredSmsClaimedAt: now }
@@ -1031,6 +1033,9 @@ router.post('/gps-renewals/:id/sms', authMiddleware, checkRole(ADMIN), asyncHand
     const records = await gpsSmsCandidates(tx.renewals);
     const record = records.find(row => row.id === id);
     if (!record) { const error = new Error('GPS renewal not found.'); error.status = 404; throw error; }
+    if (dateOnly(record.nextDue) >= currentDateOnly()) {
+      const error = new Error('This renewal has not expired yet. The current SMS template says it has expired.'); error.status = 409; throw error;
+    }
     if (record.confirmedAt || record.renewalDate) {
       const error = new Error('This renewal is already confirmed.'); error.status = 409; throw error;
     }
@@ -1049,6 +1054,7 @@ router.post('/gps-renewals/:id/sms', authMiddleware, checkRole(ADMIN), asyncHand
     }
     const result = await tx.renewals.updateMany({
       where: { id, confirmedAt: null, renewalDate: null,
+        nextDue: { lt: toDateOnly(currentDateOnly(now)) },
         OR: [{ expiredSmsStatus: null }, { expiredSmsStatus: 'failed' },
           { expiredSmsStatus: 'pending', expiredSmsClaimedAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } }] },
       data: { expiredSmsStatus: 'pending', expiredSmsClaimId: claimId, expiredSmsClaimedAt: now }

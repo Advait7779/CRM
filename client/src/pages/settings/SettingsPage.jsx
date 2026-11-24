@@ -89,7 +89,7 @@ export default function SettingsPage() {
       setSmsPreview(preview)
       if (preview.configuration !== 'enabled') return toast.error('Save a valid GPS renewal SMS URL first.')
       if (!preview.eligible) return toast('No eligible vehicles to message.', { icon: 'ℹ️' })
-      const scope = smsMode === 'all' ? 'all expiry dates, including future dates' : `${smsFrom} through ${smsTo}`
+      const scope = smsMode === 'all' ? 'all expired renewal dates' : `${smsFrom} through ${smsTo} (expired renewals only)`
       if (!window.confirm(`Send GPS renewal SMS to ${preview.eligible} vehicle${preview.eligible === 1 ? '' : 's'} for ${scope}?`)) return
       const result = await apiPost('/gps-renewals/sms/send', {
         mode: smsMode, from: smsFrom, to: smsTo, recipientIds: preview.recipientIds
@@ -264,7 +264,7 @@ export default function SettingsPage() {
         <section className="glass-card" style={{ padding: 28, marginTop: 36 }}>
           <h2 style={{ fontSize: 19, margin: '0 0 6px' }}>GPS Renewal SMS</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 18px' }}>
-            Choose a month or date range, or select All expiry dates. The separate Send SMS button sends only after you confirm the recipient count. Selecting All, saving the URL, and importing Excel do not send SMS. Each vehicle and expiry date receives at most one successful SMS; confirmed renewals and rows without a customer mobile number are skipped.
+            Choose a month or date range, or select All expired dates. This SMS says the service has expired, so only renewals with an expiry date before today are eligible. The separate Send SMS button sends only after you confirm the recipient count. Selecting All, saving the URL, and importing Excel do not send SMS. Each vehicle and expiry date receives at most one successful SMS.
           </p>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'end', marginBottom: 18 }}>
             <div className="form-group" style={{ minWidth: 170 }}>
@@ -283,7 +283,7 @@ export default function SettingsPage() {
             </div>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 42, cursor: 'pointer' }}>
               <input type="checkbox" checked={smsMode === 'all'} onChange={e => { setSmsMode(e.target.checked ? 'all' : 'range'); setSmsPreview(null) }} />
-              All expiry dates
+              All expired dates
             </label>
           </div>
           <div className="form-group">
@@ -312,7 +312,7 @@ export default function SettingsPage() {
             </button>
           </div>
           {smsPreview && <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-secondary)' }}>
-            <strong>{smsPreview.eligible} eligible vehicle{smsPreview.eligible === 1 ? '' : 's'}</strong> · {smsPreview.duplicates} duplicate row{smsPreview.duplicates === 1 ? '' : 's'} skipped · {smsPreview.alreadySent} already sent · {smsPreview.pending} in progress · {smsPreview.confirmed} confirmed · {smsPreview.missingMobile} without a customer mobile number
+            <strong>{smsPreview.eligible} eligible vehicle{smsPreview.eligible === 1 ? '' : 's'}</strong> · {smsPreview.notExpired} not expired · {smsPreview.duplicates} duplicate row{smsPreview.duplicates === 1 ? '' : 's'} skipped · {smsPreview.alreadySent} already sent · {smsPreview.pending} in progress · {smsPreview.confirmed} confirmed · {smsPreview.missingMobile} without a customer mobile number
             {smsPreview.configuration !== 'enabled' && <p style={{ color: '#b45309', marginTop: 8 }}>Save a valid GPS renewal SMS URL before sending.</p>}
             {smsPreview.sample?.length > 0 && <div style={{ marginTop: 10 }}>First recipients: {smsPreview.sample.map(row => `${row.customer} (${row.vehicle}, ${row.expiryDate}, ending ${row.phoneEnding})`).join(' · ')}</div>}
           </div>}

@@ -1,5 +1,6 @@
 const { webhookUrlForPhone } = require('./savedWebhookNotifications');
 const { dateOnly } = require('./gpsRenewals');
+const { currentDateOnly } = require('../utils/prismaData');
 
 const EXCLUDED_NUMBERS = new Set(['8282982829']);
 
@@ -12,7 +13,7 @@ function mobileFromContact(contact) {
 }
 
 function eligibleForExpiredSms(record, today) {
-  const expiry = record.nextDue instanceof Date ? record.nextDue.toISOString().slice(0, 10) : String(record.nextDue || '').slice(0, 10);
+  const expiry = dateOnly(record.nextDue);
   return expiry < today && !record.confirmedAt && !record.renewalDate && Boolean(mobileFromContact(record.contactNo));
 }
 
@@ -25,6 +26,7 @@ function renewalSmsKey(record) {
 function smsRecipientsForFilter(records, filter, now = new Date()) {
   const from = filter.mode === 'range' ? filter.from : null;
   const to = filter.mode === 'range' ? filter.to : null;
+  const today = currentDateOnly(now);
   const groups = new Map();
   for (const record of records) {
     const due = dateOnly(record.nextDue);
@@ -34,9 +36,10 @@ function smsRecipientsForFilter(records, filter, now = new Date()) {
     groups.get(key).push(record);
   }
   const recipients = [];
-  const summary = { matchedVehicles: groups.size, duplicates: 0, alreadySent: 0, pending: 0, confirmed: 0, missingMobile: 0 };
+  const summary = { matchedVehicles: groups.size, duplicates: 0, notExpired: 0, alreadySent: 0, pending: 0, confirmed: 0, missingMobile: 0 };
   for (const group of groups.values()) {
     summary.duplicates += group.length - 1;
+    if (dateOnly(group[0].nextDue) >= today) { summary.notExpired += 1; continue; }
     if (group.some(record => record.expiredSmsStatus === 'sent')) { summary.alreadySent += 1; continue; }
     if (group.some(record => record.expiredSmsStatus === 'pending'
       && (!record.expiredSmsClaimedAt || now - new Date(record.expiredSmsClaimedAt) < 60 * 60 * 1000))) {
