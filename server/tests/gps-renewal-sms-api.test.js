@@ -51,7 +51,8 @@ test('GPS renewal SMS preview and send respect dates, roles, vehicles, customer 
   t.after(() => new Promise(resolve => server.close(resolve)));
   await new Promise(resolve => server.once('listening', resolve));
   const request = async (id, path, body) => {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/gps-renewals/sms/${path}`, {
+    const route = path.startsWith('/') ? path : `/gps-renewals/sms/${path}`;
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api${route}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json',
         Authorization: `Bearer ${jwt.sign({ id, tokenVersion: 0 }, process.env.JWT_SECRET)}` },
       body: JSON.stringify(body)
@@ -76,4 +77,14 @@ test('GPS renewal SMS preview and send respect dates, roles, vehicles, customer 
   assert.equal(again.body.eligible, 0);
   assert.equal(again.body.alreadySent, 2);
   assert.equal((await request(1, 'send', { mode: 'all', recipientIds: all.body.recipientIds })).body.queued, 0);
+
+  rows[0].expiredSmsStatus = null;
+  rows[1].expiredSmsStatus = null;
+  assert.equal((await request(2, '/gps-renewals/2/sms', {})).status, 403);
+  assert.equal((await request(1, '/gps-renewals/4/sms', {})).status, 400);
+  assert.equal((await request(1, '/gps-renewals/bad/sms', {})).status, 400);
+  assert.equal((await request(1, '/gps-renewals/2/sms', {})).body.queued, 1);
+  for (let attempt = 0; sent.length < 3 && attempt < 20; attempt += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sent, [1, 3, 2]);
+  assert.equal((await request(1, '/gps-renewals/1/sms', {})).status, 409);
 });

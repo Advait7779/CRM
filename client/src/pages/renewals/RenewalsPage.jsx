@@ -1,10 +1,11 @@
 import PaginatedTable from '../../components/PaginatedTable'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Clock, FileUp, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { CheckCircle2, Clock, FileUp, MessageSquare, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ModalBackdrop from '../../components/ModalBackdrop'
 import ThemeDatePicker from '../../components/ThemeDatePicker'
 import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from '../../utils/api'
+import { useAuth } from '../../context/AuthContext'
 
 const emptyForm = { customer: '', contactNo: '', imeiNo: '', simNumber: '', vehicleNumber: '', nextDue: '', renewalDate: '', followUpDate: '', remarks: '' }
 const fields = [['customer', 'Customer name'], ['contactNo', 'Contact No'], ['imeiNo', 'IMEI No'], ['simNumber', 'SIM Number'], ['vehicleNumber', 'Vehicle Number'], ['nextDue', 'Expiry date'], ['renewalDate', 'Renewal date']]
@@ -17,8 +18,12 @@ const getOffsetDate = days => {
   return d.toISOString().slice(0, 10)
 }
 const iconButton = (color, background) => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, border: `1px solid ${color}44`, background, color, cursor: 'pointer' })
+const smsInProgress = row => row.expiredSmsStatus === 'pending'
+  && (!row.expiredSmsClaimedAt || Date.now() - new Date(row.expiredSmsClaimedAt).getTime() < 60 * 60 * 1000)
 
 export default function RenewalsPage() {
+  const { user } = useAuth()
+  const canSendSms = ['super_admin', 'director'].includes(user?.role)
   const fileInputRef = useRef(null)
   const [renewals, setRenewals] = useState([])
   const [counts, setCounts] = useState({ total: 0, followUp: 0, confirmed: 0 })
@@ -30,6 +35,7 @@ export default function RenewalsPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [sendingSmsId, setSendingSmsId] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [editing, setEditing] = useState(null)
@@ -165,6 +171,18 @@ export default function RenewalsPage() {
       setReload(value => value + 1)
     } catch (error) { toast.error(error.message) }
     finally { setBusy(false) }
+  }
+
+  const sendRowSms = async row => {
+    if (sendingSmsId !== null) return
+    if (!window.confirm(`Send a GPS renewal SMS to ${row.customer} for vehicle ${row.vehicleNumber}?`)) return
+    setSendingSmsId(row.id)
+    try {
+      await apiPost(`/gps-renewals/${row.id}/sms`, {})
+      toast.success(`Renewal SMS queued for ${row.customer}.`)
+      setReload(value => value + 1)
+    } catch (error) { toast.error(error.message) }
+    finally { setSendingSmsId(null) }
   }
 
   const importFile = async event => {
@@ -328,6 +346,13 @@ export default function RenewalsPage() {
                 <Clock size={15} />
               </button>
               <button type="button" title="Edit renewal" aria-label="Edit renewal" style={iconButton('#6366f1', 'rgba(99,102,241,.12)')} onClick={() => openForm(row)}><Pencil size={15} /></button>
+              {canSendSms && <button type="button"
+                title={row.expiredSmsStatus === 'sent' ? 'SMS already sent for this renewal' : smsInProgress(row) ? 'SMS is being sent' : row.confirmedAt || row.renewalDate ? 'Confirmed renewals do not receive SMS' : 'Send renewal SMS to this customer'}
+                aria-label={`Send renewal SMS to ${row.customer} for ${row.vehicleNumber}`}
+                disabled={sendingSmsId !== null || Boolean(row.confirmedAt || row.renewalDate) || row.expiredSmsStatus === 'sent' || smsInProgress(row)}
+                style={{ ...iconButton('#2563eb', 'rgba(37,99,235,.10)'), width: 'auto', padding: '0 8px', gap: 5,
+                  opacity: sendingSmsId !== null || row.confirmedAt || row.renewalDate || row.expiredSmsStatus === 'sent' || smsInProgress(row) ? 0.5 : 1 }}
+                onClick={() => sendRowSms(row)}><MessageSquare size={14} /> {row.expiredSmsStatus === 'sent' ? 'Sent' : 'SMS'}</button>}
               <button type="button" title="Delete renewal" aria-label="Delete renewal" style={iconButton('#ef4444', 'rgba(239,68,68,.10)')} onClick={() => setConfirm({ action: 'delete', renewal: row })}><Trash2 size={15} /></button>
             </div></td>
           </tr>)}
